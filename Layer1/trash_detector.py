@@ -1,27 +1,30 @@
 """
-Trash Detector v4 — Drop Event Detection
+Trash Detector v5 — Universal Dumping Detection
 
-Logic:
-  Phase 1 (HELD):   Object bbox overlaps with person bbox
-  Phase 2 (DROPPED): Object was previously held, now no longer
-                     overlapping person AND is in ground zone
-                     → immediately flag as TRASH
+Two parallel pipelines:
 
-This catches the exact moment of dropping, not after a long wait.
+Pipeline A (SLOW DROP):
+  Object held → separated from person → stays stationary without person
+  → Works for: walking drop, leaving bag, fly-tipping
+
+Pipeline B (FAST THROW):
+  Object held → suddenly disappears while person arm is still extended
+  → Works for: car window throw, cyclist litter, fast toss
 """
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from .detector import Detection
 from enum import Enum
 
 
 class ObjectState(Enum):
-    APPEARING  = "appearing"   # just detected, not yet held
-    HELD       = "held"        # overlapping with a person
-    DROPPED    = "dropped"     # was held, now separated from person on ground
-    GROUNDED   = "grounded"    # was near ground and person walked away
+    APPEARING = "appearing"
+    HELD      = "held"
+    RELEASED  = "released"   # separated from person, still in frame
+    DROPPED   = "dropped"    # confirmed trash — slow drop pipeline
+    THROWN    = "thrown"     # confirmed trash — fast throw pipeline
 
 
 @dataclass
@@ -31,16 +34,29 @@ class TrashDetection:
     confidence: float = 1.0
     class_id:   int   = -1
     label:      str   = ""
+    how:        str   = ""    # "dropped" or "thrown" — useful for Layer 5 later
 
 
 @dataclass
 class _TrackedObject:
-    det:          Detection
-    state:        ObjectState = ObjectState.APPEARING
-    held_frames:  int = 0          # how many frames was it held
-    frames_seen:  int = 0
-    confirmed:    bool = False     # True = show red trash box
+    det:             Detection
+    state:           ObjectState = ObjectState.APPEARING
+    held_frames:     int  = 0
+    released_frames: int  = 0   # frames since it separated from person
+    frames_seen:     int  = 0
+    confirmed:       bool = False
+    how:             str  = ""
 
+
+@dataclass
+class _PersonState:
+    """Tracks person arm extension — signal of a throw."""
+    bbox:            np.ndarray
+    prev_bbox:       Optional[np.ndarray] = None
+    held_object_ids: List[int] = field(default_factory=list)
+
+
+# ── Geometry helpers ──────────────────────────────────────
 
 def _iou(a: np.ndarray, b: np.ndarray) -> float:
     ix1 = max(a[0], b[0]); iy1 = max(a[1], b[1])
@@ -48,21 +64,20 @@ def _iou(a: np.ndarray, b: np.ndarray) -> float:
     inter = max(0, ix2-ix1) * max(0, iy2-iy1)
     if inter == 0:
         return 0.0
-    aa = (a[2]-a[0])*(a[3]-a[1])
-    ab = (b[2]-b[0])*(b[3]-b[1])
+    aa = (a[2]-a[0]) * (a[3]-a[1])
+    ab = (b[2]-b[0]) * (b[3]-b[1])
     return inter / (aa + ab - inter)
 
 
-def _centroid(bbox):
+def _centroid(bbox: np.ndarray) -> Tuple[float, float]:
     return ((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2)
 
 
-def _is_near_person(obj_bbox: np.ndarray, persons: List[Detection], iou_thresh=0.08) -> bool:
-    """True if object is overlapping or very close to any person."""
+def _near_person(obj_bbox: np.ndarray, persons: List[Detection],
+                 iou_thresh=0.08) -> bool:
     for p in persons:
         if _iou(obj_bbox, p.bbox) > iou_thresh:
             return True
-        # Also check if object centroid is inside person bbox (for carried bags)
         cx, cy = _centroid(obj_bbox)
         px1, py1, px2, py2 = p.bbox
         if px1 <= cx <= px2 and py1 <= cy <= py2:
@@ -70,38 +85,55 @@ def _is_near_person(obj_bbox: np.ndarray, persons: List[Detection], iou_thresh=0
     return False
 
 
-def _is_on_ground(obj_bbox: np.ndarray, frame_h: int, ground_fraction=0.35) -> bool:
-    """True if bottom of object is in the lower ground_fraction of frame."""
-    ground_y = frame_h * (1.0 - ground_fraction)
-    return obj_bbox[3] >= ground_y   # y2 (bottom edge) in ground zone
+def _person_arm_extended(persons: List[Detection], frame_w: int) -> bool:
+    """
+    Rough heuristic: person bbox touches or is very close to
+    the left or right edge of the frame = arm out of window / reaching far.
+    """
+    for p in persons:
+        x1, x2 = p.bbox[0], p.bbox[2]
+        if x1 <= 15 or x2 >= frame_w - 15:
+            return True
+    return False
 
 
 class TrashDetector:
-    MATCH_DIST_PX     = 80    # px to match same object across frames
-    MIN_HELD_FRAMES   = 3     # must be held for at least this many frames to count as "carried"
-    GROUND_FRACTION   = 0.40  # bottom 40% = ground zone
+
+    # ── Pipeline A (slow drop) ─────────────
+    MIN_HELD_FRAMES     = 5    # must be held for 5+ frames to count as "carried"
+    RELEASE_CONFIRM     = 8    # frames object must sit without person to confirm drop
+    MATCH_DIST_PX       = 80
+
+    # ── Pipeline B (fast throw) ────────────
+    THROW_MIN_HELD      = 3    # held for at least 3 frames before vanishing
+    # Object disappears within this many frames of being held = throw
+    THROW_VANISH_FRAMES = 4
 
     def __init__(self):
-        self._tracked: List[_TrackedObject] = []
+        self._tracked:       List[_TrackedObject] = []
+        # Ghost tracker: objects that WERE held and then vanished
+        # key = approximate last centroid, value = (held_frames, frames_since_gone)
+        self._ghosts: List[dict] = []
 
     def detect(
         self,
-        frame_shape: tuple,
+        frame_shape:    tuple,
         all_detections: List[Detection],
     ) -> List[TrashDetection]:
 
-        H = frame_shape[0]
+        H, W = frame_shape[:2]
         persons = [d for d in all_detections if d.class_name == "person"]
         objects = [d for d in all_detections if d.class_name != "person"]
 
-        # ── Match current detections → existing tracked objects ──
+        # ════════════════════════════════════
+        # PIPELINE A — slow drop tracking
+        # ════════════════════════════════════
         updated: List[_TrackedObject] = []
         used = set()
 
         for tracked in self._tracked:
             cx, cy = _centroid(tracked.det.bbox)
             best_i, best_d = -1, float("inf")
-
             for i, obj in enumerate(objects):
                 if i in used:
                     continue
@@ -111,69 +143,111 @@ class TrashDetector:
                     best_d, best_i = d, i
 
             if best_i >= 0 and best_d < self.MATCH_DIST_PX:
+                # Object still visible — update state
                 used.add(best_i)
-                obj = objects[best_i]
-                near_person = _is_near_person(obj.bbox, persons)
-                on_ground   = _is_on_ground(obj.bbox, H, self.GROUND_FRACTION)
+                obj         = objects[best_i]
+                with_person = _near_person(obj.bbox, persons)
 
-                # ── State machine ──────────────────────────
-                new_state     = tracked.state
-                new_held      = tracked.held_frames
-                new_confirmed = tracked.confirmed
+                new_held     = tracked.held_frames
+                new_released = tracked.released_frames
+                new_state    = tracked.state
+                new_confirmed= tracked.confirmed
+                new_how      = tracked.how
 
-                if near_person:
-                    # Object is with a person → HELD
-                    new_state  = ObjectState.HELD
-                    new_held   = tracked.held_frames + 1
-                    new_confirmed = False  # reset — not trash while held
+                if with_person:
+                    new_state    = ObjectState.HELD
+                    new_held     = tracked.held_frames + 1
+                    new_released = 0
+                    new_confirmed= False   # not trash while held
 
-                elif tracked.state == ObjectState.HELD and not near_person:
-                    # WAS held, now separated → DROPPED
-                    if tracked.held_frames >= self.MIN_HELD_FRAMES:
+                elif tracked.state == ObjectState.HELD:
+                    # Just separated from person
+                    new_state    = ObjectState.RELEASED
+                    new_released = 1
+
+                elif tracked.state == ObjectState.RELEASED:
+                    new_released = tracked.released_frames + 1
+                    # Confirm after sitting without person for RELEASE_CONFIRM frames
+                    if (tracked.held_frames >= self.MIN_HELD_FRAMES
+                            and new_released >= self.RELEASE_CONFIRM):
                         new_state     = ObjectState.DROPPED
-                        new_confirmed = True   # 🚨 flag immediately on drop
-                    else:
-                        new_state = ObjectState.APPEARING
+                        new_confirmed = True
+                        new_how       = "dropped"
 
-                elif tracked.state == ObjectState.APPEARING and on_ground and not near_person:
-                    # Object appeared on ground without being held
-                    # (e.g. rolled into frame) — flag after brief check
-                    new_state     = ObjectState.GROUNDED
-                    new_confirmed = tracked.frames_seen >= 8
-
-                elif tracked.state in (ObjectState.DROPPED, ObjectState.GROUNDED):
-                    # Keep confirmed once flagged, stays as trash
-                    new_confirmed = True
+                elif tracked.state in (ObjectState.DROPPED, ObjectState.THROWN):
+                    new_confirmed = True   # keep showing once confirmed
 
                 updated.append(_TrackedObject(
-                    det          = obj,
-                    state        = new_state,
-                    held_frames  = new_held,
-                    frames_seen  = tracked.frames_seen + 1,
-                    confirmed    = new_confirmed,
+                    det             = obj,
+                    state           = new_state,
+                    held_frames     = new_held,
+                    released_frames = new_released,
+                    frames_seen     = tracked.frames_seen + 1,
+                    confirmed       = new_confirmed,
+                    how             = new_how,
                 ))
-            # else: object left frame → drop it
 
-        # ── New objects not yet tracked ──
+            else:
+                # Object disappeared from frame
+                # Feed into Pipeline B ghost tracker if it was being held
+                if (tracked.state == ObjectState.HELD
+                        and tracked.held_frames >= self.THROW_MIN_HELD):
+                    self._ghosts.append({
+                        "last_bbox":    tracked.det.bbox.copy(),
+                        "held_frames":  tracked.held_frames,
+                        "frames_gone":  0,
+                        "label":        tracked.det.class_name,
+                        "conf":         tracked.det.confidence,
+                    })
+
+        # New unmatched objects
         for i, obj in enumerate(objects):
             if i not in used:
-                near_person = _is_near_person(obj.bbox, persons)
+                with_person = _near_person(obj.bbox, persons)
                 updated.append(_TrackedObject(
                     det         = obj,
-                    state       = ObjectState.HELD if near_person else ObjectState.APPEARING,
-                    held_frames = 1 if near_person else 0,
+                    state       = ObjectState.HELD if with_person else ObjectState.APPEARING,
+                    held_frames = 1 if with_person else 0,
                     frames_seen = 1,
                 ))
 
         self._tracked = updated
 
-        # ── Return confirmed trash ──
-        return [
+        # ════════════════════════════════════
+        # PIPELINE B — fast throw (ghost objects)
+        # ════════════════════════════════════
+        arm_extended   = _person_arm_extended(persons, W)
+        throw_detections: List[TrashDetection] = []
+        live_ghosts = []
+
+        for ghost in self._ghosts:
+            ghost["frames_gone"] += 1
+
+            if ghost["frames_gone"] <= self.THROW_VANISH_FRAMES:
+                # Object vanished quickly after being held = throw event
+                # Confirm if person arm was extended (or just trust the vanish)
+                throw_detections.append(TrashDetection(
+                    bbox       = ghost["last_bbox"],
+                    label      = ghost["label"],
+                    confidence = ghost["conf"],
+                    how        = "thrown",
+                ))
+                live_ghosts.append(ghost)   # keep showing for a few frames
+            # After THROW_VANISH_FRAMES, stop showing the ghost box
+
+        self._ghosts = live_ghosts
+
+        # ════════════════════════════════════
+        # Combine both pipelines
+        # ════════════════════════════════════
+        pipeline_a = [
             TrashDetection(
                 bbox       = t.det.bbox,
                 label      = t.det.class_name,
                 confidence = t.det.confidence,
+                how        = t.how,
             )
-            for t in self._tracked
-            if t.confirmed
+            for t in self._tracked if t.confirmed
         ]
+
+        return pipeline_a + throw_detections

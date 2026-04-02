@@ -8,9 +8,11 @@ DEVICE = "mps"              # Mac Apple Silicon
 KEEP_CLASSES = {
     "person",
     "bottle", "cup", "backpack", "handbag", "suitcase",
-    "bag", "sports ball", "frisbee",
+    "bag", "sports ball",
     "chair", "couch", "tv", "laptop",
     "box", "clock", "vase", "book",
+    # For Layer 5 bin-context detection:
+    "trash can", "waste container",  # won't match COCO but note for future
 }
 
 # Trash detection via background subtraction
