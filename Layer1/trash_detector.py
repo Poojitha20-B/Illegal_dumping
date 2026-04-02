@@ -1,149 +1,179 @@
 """
-Trash Detector — only flags objects that:
-1. Appear in the lower portion of the frame (near ground)
-2. Have stopped moving (stationary for N frames)
-3. Are NOT overlapping with a person
+Trash Detector v4 — Drop Event Detection
+
+Logic:
+  Phase 1 (HELD):   Object bbox overlaps with person bbox
+  Phase 2 (DROPPED): Object was previously held, now no longer
+                     overlapping person AND is in ground zone
+                     → immediately flag as TRASH
+
+This catches the exact moment of dropping, not after a long wait.
 """
 
-import cv2
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple
-from .config import TRASH_MIN_AREA, TRASH_LABEL
+from typing import List, Optional
+from .detector import Detection
+from enum import Enum
+
+
+class ObjectState(Enum):
+    APPEARING  = "appearing"   # just detected, not yet held
+    HELD       = "held"        # overlapping with a person
+    DROPPED    = "dropped"     # was held, now separated from person on ground
+    GROUNDED   = "grounded"    # was near ground and person walked away
 
 
 @dataclass
 class TrashDetection:
-    bbox: np.ndarray
-    class_name: str = TRASH_LABEL
+    bbox:       np.ndarray
+    class_name: str   = "trash"
     confidence: float = 1.0
-    class_id: int = -1
+    class_id:   int   = -1
+    label:      str   = ""
 
 
 @dataclass
-class TrackedBlob:
-    bbox: np.ndarray        # current bbox
-    stationary_frames: int  # how many frames it hasn't moved
-    confirmed: bool = False # True once it's been still long enough
+class _TrackedObject:
+    det:          Detection
+    state:        ObjectState = ObjectState.APPEARING
+    held_frames:  int = 0          # how many frames was it held
+    frames_seen:  int = 0
+    confirmed:    bool = False     # True = show red trash box
 
 
 def _iou(a: np.ndarray, b: np.ndarray) -> float:
-    """Intersection over Union for two [x1,y1,x2,y2] boxes."""
     ix1 = max(a[0], b[0]); iy1 = max(a[1], b[1])
     ix2 = min(a[2], b[2]); iy2 = min(a[3], b[3])
-    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    inter = max(0, ix2-ix1) * max(0, iy2-iy1)
     if inter == 0:
         return 0.0
-    area_a = (a[2]-a[0]) * (a[3]-a[1])
-    area_b = (b[2]-b[0]) * (b[3]-b[1])
-    return inter / (area_a + area_b - inter)
+    aa = (a[2]-a[0])*(a[3]-a[1])
+    ab = (b[2]-b[0])*(b[3]-b[1])
+    return inter / (aa + ab - inter)
+
+
+def _centroid(bbox):
+    return ((bbox[0]+bbox[2])/2, (bbox[1]+bbox[3])/2)
+
+
+def _is_near_person(obj_bbox: np.ndarray, persons: List[Detection], iou_thresh=0.08) -> bool:
+    """True if object is overlapping or very close to any person."""
+    for p in persons:
+        if _iou(obj_bbox, p.bbox) > iou_thresh:
+            return True
+        # Also check if object centroid is inside person bbox (for carried bags)
+        cx, cy = _centroid(obj_bbox)
+        px1, py1, px2, py2 = p.bbox
+        if px1 <= cx <= px2 and py1 <= cy <= py2:
+            return True
+    return False
+
+
+def _is_on_ground(obj_bbox: np.ndarray, frame_h: int, ground_fraction=0.35) -> bool:
+    """True if bottom of object is in the lower ground_fraction of frame."""
+    ground_y = frame_h * (1.0 - ground_fraction)
+    return obj_bbox[3] >= ground_y   # y2 (bottom edge) in ground zone
 
 
 class TrashDetector:
-    """
-    Two-stage trash detection:
-    Stage 1 — MOG2 finds foreground blobs
-    Stage 2 — Only confirm blobs that are:
-               - In the bottom 60% of the frame (ground level)
-               - Stationary for STATIONARY_FRAMES_REQUIRED frames
-               - Not overlapping with any person
-    """
-
-    STATIONARY_FRAMES_REQUIRED = 15   # ~0.5s at 30fps — tune this
-    MOVE_THRESHOLD_PX           = 20  # pixels of centroid movement = "still moving"
-    GROUND_ZONE_FRACTION        = 0.4 # only look in bottom 40% of frame
+    MATCH_DIST_PX     = 80    # px to match same object across frames
+    MIN_HELD_FRAMES   = 3     # must be held for at least this many frames to count as "carried"
+    GROUND_FRACTION   = 0.40  # bottom 40% = ground zone
 
     def __init__(self):
-        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=300,
-            varThreshold=60,        # higher = less sensitive, fewer false positives
-            detectShadows=False,
-        )
-        self.kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        self.kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-        self.tracked_blobs: List[TrackedBlob] = []
+        self._tracked: List[_TrackedObject] = []
 
-    # ─────────────────────────────────────────
-    def detect(self, frame: np.ndarray, person_bboxes: List[np.ndarray]) -> List[TrashDetection]:
-        h, w = frame.shape[:2]
-        ground_y = int(h * (1.0 - self.GROUND_ZONE_FRACTION))  # e.g. y > 60% height
+    def detect(
+        self,
+        frame_shape: tuple,
+        all_detections: List[Detection],
+    ) -> List[TrashDetection]:
 
-        # ── Stage 1: get foreground mask ──────
-        fg = self.bg_subtractor.apply(frame)
-        _, fg = cv2.threshold(fg, 200, 255, cv2.THRESH_BINARY)
-        fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN,  self.kernel_open,  iterations=1)
-        fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, self.kernel_close, iterations=2)
+        H = frame_shape[0]
+        persons = [d for d in all_detections if d.class_name == "person"]
+        objects = [d for d in all_detections if d.class_name != "person"]
 
-        # Mask out person regions + upper frame
-        fg[:ground_y, :] = 0                          # ignore upper portion
-        for bbox in person_bboxes:
-            x1, y1, x2, y2 = map(int, bbox)
-            pad = 25
-            fg[max(0,y1-pad):min(h,y2+pad), max(0,x1-pad):min(w,x2+pad)] = 0
-
-        # ── Stage 2: find blobs ───────────────
-        contours, _ = cv2.findContours(fg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        current_blobs: List[np.ndarray] = []
-
-        for cnt in contours:
-            if cv2.contourArea(cnt) < TRASH_MIN_AREA:
-                continue
-            x, y, bw, bh = cv2.boundingRect(cnt)
-
-            # Skip tall blobs (likely partial person)
-            if bh / max(bw, 1) > 2.5:
-                continue
-
-            # Skip blobs overlapping any person
-            bbox = np.array([x, y, x+bw, y+bh], dtype=float)
-            overlap = any(_iou(bbox, pb) > 0.1 for pb in person_bboxes)
-            if overlap:
-                continue
-
-            current_blobs.append(bbox)
-
-        # ── Stage 3: track stationarity ───────
-        updated: List[TrackedBlob] = []
+        # ── Match current detections → existing tracked objects ──
+        updated: List[_TrackedObject] = []
         used = set()
 
-        for blob in self.tracked_blobs:
-            cx_old = (blob.bbox[0] + blob.bbox[2]) / 2
-            cy_old = (blob.bbox[1] + blob.bbox[3]) / 2
+        for tracked in self._tracked:
+            cx, cy = _centroid(tracked.det.bbox)
+            best_i, best_d = -1, float("inf")
 
-            # Find best matching current blob
-            best_idx, best_dist = -1, float("inf")
-            for i, cb in enumerate(current_blobs):
+            for i, obj in enumerate(objects):
                 if i in used:
                     continue
-                cx = (cb[0] + cb[2]) / 2
-                cy = (cb[1] + cb[3]) / 2
-                dist = np.hypot(cx - cx_old, cy - cy_old)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = i
+                ox, oy = _centroid(obj.bbox)
+                d = np.hypot(cx-ox, cy-oy)
+                if d < best_d:
+                    best_d, best_i = d, i
 
-            if best_idx >= 0 and best_dist < 60:  # matched
-                used.add(best_idx)
-                moved = best_dist > self.MOVE_THRESHOLD_PX
-                updated.append(TrackedBlob(
-                    bbox              = current_blobs[best_idx],
-                    stationary_frames = 0 if moved else blob.stationary_frames + 1,
-                    confirmed         = blob.confirmed or (
-                        blob.stationary_frames + 1 >= self.STATIONARY_FRAMES_REQUIRED
-                    )
+            if best_i >= 0 and best_d < self.MATCH_DIST_PX:
+                used.add(best_i)
+                obj = objects[best_i]
+                near_person = _is_near_person(obj.bbox, persons)
+                on_ground   = _is_on_ground(obj.bbox, H, self.GROUND_FRACTION)
+
+                # ── State machine ──────────────────────────
+                new_state     = tracked.state
+                new_held      = tracked.held_frames
+                new_confirmed = tracked.confirmed
+
+                if near_person:
+                    # Object is with a person → HELD
+                    new_state  = ObjectState.HELD
+                    new_held   = tracked.held_frames + 1
+                    new_confirmed = False  # reset — not trash while held
+
+                elif tracked.state == ObjectState.HELD and not near_person:
+                    # WAS held, now separated → DROPPED
+                    if tracked.held_frames >= self.MIN_HELD_FRAMES:
+                        new_state     = ObjectState.DROPPED
+                        new_confirmed = True   # 🚨 flag immediately on drop
+                    else:
+                        new_state = ObjectState.APPEARING
+
+                elif tracked.state == ObjectState.APPEARING and on_ground and not near_person:
+                    # Object appeared on ground without being held
+                    # (e.g. rolled into frame) — flag after brief check
+                    new_state     = ObjectState.GROUNDED
+                    new_confirmed = tracked.frames_seen >= 8
+
+                elif tracked.state in (ObjectState.DROPPED, ObjectState.GROUNDED):
+                    # Keep confirmed once flagged, stays as trash
+                    new_confirmed = True
+
+                updated.append(_TrackedObject(
+                    det          = obj,
+                    state        = new_state,
+                    held_frames  = new_held,
+                    frames_seen  = tracked.frames_seen + 1,
+                    confirmed    = new_confirmed,
                 ))
-            # else: blob disappeared — drop it
+            # else: object left frame → drop it
 
-        # Add new unmatched blobs
-        for i, cb in enumerate(current_blobs):
+        # ── New objects not yet tracked ──
+        for i, obj in enumerate(objects):
             if i not in used:
-                updated.append(TrackedBlob(bbox=cb, stationary_frames=0))
+                near_person = _is_near_person(obj.bbox, persons)
+                updated.append(_TrackedObject(
+                    det         = obj,
+                    state       = ObjectState.HELD if near_person else ObjectState.APPEARING,
+                    held_frames = 1 if near_person else 0,
+                    frames_seen = 1,
+                ))
 
-        self.tracked_blobs = updated
+        self._tracked = updated
 
-        # ── Return only confirmed stationary trash ─
+        # ── Return confirmed trash ──
         return [
-            TrashDetection(bbox=b.bbox)
-            for b in self.tracked_blobs
-            if b.confirmed
+            TrashDetection(
+                bbox       = t.det.bbox,
+                label      = t.det.class_name,
+                confidence = t.det.confidence,
+            )
+            for t in self._tracked
+            if t.confirmed
         ]
