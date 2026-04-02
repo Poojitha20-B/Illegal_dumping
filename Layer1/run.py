@@ -42,7 +42,7 @@ def run(source, save: bool = False):
         trash_detections = []
         if trash_detector:
             person_bboxes = [d.bbox for d in detections if d.class_name == "person"]
-            trash_detections = trash_detector.detect(frame, person_bboxes)
+            trash_detections = trash_detector.detect(frame.shape, detections)
 
         # Visualise
         vis = draw_detections(frame, detections)

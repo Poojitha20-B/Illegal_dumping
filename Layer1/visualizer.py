@@ -57,10 +57,11 @@ def draw_detections(frame: np.ndarray, detections: List[Detection]) -> np.ndarra
 
     return out
 def draw_trash(frame: np.ndarray, trash_detections) -> np.ndarray:
-    """Draw red boxes around detected trash blobs."""
     for det in trash_detections:
         x1, y1, x2, y2 = map(int, det.bbox)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), TRASH_COLOR, 2)
-        cv2.putText(frame, "trash", (x1 + 2, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        # Show original class name e.g. "trash: bottle"
+        lbl = f"trash: {det.label}" if det.label else "trash"
+        cv2.putText(frame, lbl, (x1+2, y1-4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1, cv2.LINE_AA)
     return frame
