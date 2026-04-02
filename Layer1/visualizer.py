@@ -60,8 +60,8 @@ def draw_trash(frame: np.ndarray, trash_detections) -> np.ndarray:
     for det in trash_detections:
         x1, y1, x2, y2 = map(int, det.bbox)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        # Show original class name e.g. "trash: bottle"
-        lbl = f"trash: {det.label}" if det.label else "trash"
+        # Show how it was caught — useful for debugging
+        lbl = f"TRASH({det.how}): {det.label}" if det.label else "TRASH"
         cv2.putText(frame, lbl, (x1+2, y1-4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     return frame
