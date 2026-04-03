@@ -1,10 +1,9 @@
 """
 Layer 2 — Visualizer
 
-Fix: HUD now shows PEAK (cumulative max) counts for persons and objects,
-so "Tracked persons: 1" and "Tracked objects: 2" stay visible permanently
-even after the person and objects leave the frame — matching the behaviour
-of "Trash events: 2" which also never resets.
+HUD shows PEAK (cumulative max) counts passed in from the tracker,
+so counts never drop to 0 after objects leave frame — consistent
+with how total_trash_events already behaves.
 """
 
 import cv2
@@ -23,8 +22,9 @@ def draw_tracks(
     frame:              np.ndarray,
     tracks:             List[TrackedObject],
     total_trash_events: int = 0,
-    max_persons_seen:   int = 0,   # ← NEW: peak persons, passed from tracker
-    max_objects_seen:   int = 0,   # ← NEW: peak objects, passed from tracker
+    max_persons_seen:   int = 0,   # peak value maintained by tracker
+    max_objects_seen:   int = 0,   # peak value maintained by tracker
+    max_trash_tagged:   int = 0,   # ← add
 ) -> np.ndarray:
 
     for t in tracks:
@@ -33,11 +33,11 @@ def draw_tracks(
 
         # ── Color ────────────────────────────────────────────────────
         if t.is_trash:
-            color = (0, 0, 220)           # red for all trash (real + ghost)
+            color = (0, 0, 220)
         elif t.class_name == "person":
-            color = (0, 200, 0)           # green for persons
+            color = (0, 200, 0)
         else:
-            color = _id_color(t.track_id) # unique color per object ID
+            color = _id_color(t.track_id)
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
@@ -54,7 +54,7 @@ def draw_tracks(
         cv2.putText(frame, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # ── Trail (skip ghosts — they have no history) ───────────────
+        # ── Trail (skip ghosts — no history) ─────────────────────────
         if SHOW_TRAILS and not is_ghost and len(t.trail) > 1:
             pts = list(t.trail)
             for i in range(1, len(pts)):
@@ -62,13 +62,13 @@ def draw_tracks(
                 c = tuple(int(x * alpha) for x in color)
                 cv2.circle(frame, (int(pts[i][0]), int(pts[i][1])), 2, c, -1)
 
-    # ── Stats HUD ────────────────────────────────────────────────────
-    # All three lines now use CUMULATIVE PEAK values so they never drop
-    # back to 0 once a person/object has been seen — consistent with
-    # how "Trash events" already behaves.
+    # ── Stats HUD — use PEAK values from tracker, never compute here ──
+    #trash_tagged = sum(1 for t in tracks if t.is_trash and t.track_id >= 0)
+
     for i, txt in enumerate([
         f"Tracked persons : {max_persons_seen}",
         f"Tracked objects : {max_objects_seen}",
+        f"Trash tagged    : {max_trash_tagged}",   # ← peak, never drops
         f"Trash events    : {total_trash_events}",
     ]):
         cv2.putText(frame, txt, (10, 24 + i * 22),

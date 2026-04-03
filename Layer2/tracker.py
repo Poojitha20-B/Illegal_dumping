@@ -3,10 +3,12 @@ Layer 2 — ByteTrack (pure numpy implementation)
 
 Fixes in this version:
   - TRACK_MATCH_THRESH lowered to 0.30 (was 0.8 — was killing all matches)
-  - MIN_TRACK_FRAMES = 1 for persons too (was 2 — suppressed brief detections)
-  - Ghost throw bbox now stored as a TrackedObject so red box gets drawn
+  - Objects appear on frame 1; persons need MIN_TRACK_FRAMES to suppress false positives
+  - min_frames computed INSIDE the loop (was outside — caused UnboundLocalError on t)
+  - Ghost throw bbox drawn as red TrackedObject with negative ID
+  - Dead code removed: any_overlap was computed but never used
   - max_persons_seen / max_objects_seen: cumulative peak counters so
-    the HUD keeps showing "persons: 1, objects: 2" even after they leave frame
+    HUD keeps showing counts even after objects leave frame
 """
 
 import numpy as np
@@ -103,10 +105,11 @@ class ByteTrackWrapper:
         self._frame_count:        int                      = 0
         self._trash_track_ids:    set                      = set()
 
-        # ── Cumulative counters shown permanently in HUD ──
+        # Cumulative counters — never decrease, shown permanently in HUD
         self.total_trash_events: int = 0
-        self.max_persons_seen:   int = 0   # ← NEW: peak persons ever in frame
-        self.max_objects_seen:   int = 0   # ← NEW: peak objects ever in frame
+        self.max_persons_seen:   int = 0
+        self.max_objects_seen:   int = 0
+        self.max_trash_tagged:   int = 0
 
     # ─────────────────────────────────────────
     def update(
@@ -124,6 +127,7 @@ class ByteTrackWrapper:
         # Clear ghost draw objects from last frame
         self._ghost_draw_objects = []
 
+        # Split detections into high / low confidence pools
         high = [d for d in detections if d.confidence >= TRACK_HIGH_THRESH]
         low  = [d for d in detections if TRACK_LOW_THRESH <= d.confidence < TRACK_HIGH_THRESH]
 
@@ -165,13 +169,19 @@ class ByteTrackWrapper:
         self._tracks = [t for t in self._tracks if t.frames_lost <= MAX_TIME_LOST]
 
         # ── Step 7: build TrackedObject output ────────────────────────
+        # Persons need MIN_TRACK_FRAMES to suppress false positives.
+        # Objects use 1 — appear on their very first detected frame.
+        # CRITICAL: min_frames must be computed INSIDE the loop per track.
         output:   List[TrackedObject] = []
         seen_ids: set                 = set()
 
         for t in self._tracks:
             if t.frames_lost > 0:
                 continue
-            if t.frames_seen < MIN_TRACK_FRAMES:
+
+            # Per-class threshold — objects always show on frame 1
+            min_frames = MIN_TRACK_FRAMES if t.class_name == "person" else 1
+            if t.frames_seen < min_frames:
                 continue
 
             tid = t.track_id
@@ -199,14 +209,14 @@ class ByteTrackWrapper:
             if tid not in seen_ids:
                 del self._active_objects[tid]
 
-        # ── Step 8: tag trash + update cumulative counter ─────────────
+        # ── Step 8: tag trash + update cumulative event counter ───────
         self._tag_trash(output, trash_detections)
 
-        # Append ghost draw objects so red boxes render
+        # Append ghost draw objects so their red boxes render this frame
         output.extend(self._ghost_draw_objects)
 
-        # ── Step 9: update peak counters ──────────────────────────────
-        # Count only real tracks (positive IDs), not ghost placeholders
+        # ── Step 9: update peak HUD counters ──────────────────────────
+        # Count only real tracks (positive IDs) — exclude ghost placeholders
         current_persons = sum(
             1 for t in output
             if t.class_name == "person" and t.track_id > 0
@@ -215,9 +225,13 @@ class ByteTrackWrapper:
             1 for t in output
             if t.class_name != "person" and t.track_id > 0
         )
-        # Peak: once we see N persons/objects, keep showing N forever
+        current_trash_tagged = sum(
+            1 for t in output
+            if t.is_trash and t.track_id > 0
+        )
         self.max_persons_seen = max(self.max_persons_seen, current_persons)
         self.max_objects_seen = max(self.max_objects_seen, current_objects)
+        self.max_trash_tagged = max(self.max_trash_tagged, current_trash_tagged)
 
         return output
 
@@ -227,6 +241,7 @@ class ByteTrackWrapper:
         tracks: List[_Track],
         dets:   List[Detection],
     ) -> Tuple[List[Tuple], List[int], List[int]]:
+        """Hungarian matching on IoU. Returns (matched pairs, unmatched_t, unmatched_d)."""
         if not tracks or not dets:
             return [], list(range(len(tracks))), list(range(len(dets)))
 
@@ -255,6 +270,15 @@ class ByteTrackWrapper:
         tracks:           List[TrackedObject],
         trash_detections: List[TrashDetection],
     ):
+        """
+        Tag tracked objects as trash and maintain cumulative event count.
+
+        Matching rules:
+          1. Never tag a person track as trash — skip all person tracks
+          2. Match trash bbox to closest non-person track by IoU then centroid distance
+          3. Ghost throw (no matching track): one event per GHOST_COOLDOWN_FRAMES window,
+             rendered as a negative-ID TrackedObject so a red box appears on screen
+        """
         for trash in trash_detections:
             best_iou:   float                   = 0.0
             best_dist:  float                   = float("inf")
@@ -271,30 +295,31 @@ class ByteTrackWrapper:
                 cy   = (t.bbox[1] + t.bbox[3]) / 2
                 dist = np.hypot(tcx - cx, tcy - cy)
 
+                # Prefer highest IoU; fall back to nearest centroid when IoU = 0
                 if iou > best_iou or (best_iou == 0 and dist < best_dist):
                     best_iou   = iou
                     best_dist  = dist
                     best_track = t
 
             if best_track is not None and (best_iou > 0.10 or best_dist < 80):
-                # Matched to a real tracked object
+                # ── Matched to a real tracked object ─────────────────
                 best_track.is_trash    = True
                 best_track.trash_label = trash.label
                 best_track.trash_how   = trash.how
 
+                # Increment only the first time this track ID is flagged
                 if best_track.track_id not in self._trash_track_ids:
                     self._trash_track_ids.add(best_track.track_id)
                     self.total_trash_events += 1
 
             else:
-                # Ghost throw — object left frame before being tracked
-                any_overlap = any(_single_iou(trash.bbox, t.bbox) > 0.01 
-                  for t in tracks if t.class_name != "person")
+                # ── Ghost throw — object left frame before being tracked ──
+                # Cooldown prevents one physical throw being counted across
+                # multiple frames. One cooldown window = exactly one event.
                 if self._ghost_cooldown == 0:
                     self.total_trash_events += 1
                     self._ghost_cooldown = GHOST_COOLDOWN_FRAMES
 
-                    # Create ghost TrackedObject so red box gets drawn
                     ghost_obj = TrackedObject(
                         track_id    = -(self.total_trash_events),
                         bbox        = trash.bbox.copy(),
