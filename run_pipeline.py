@@ -11,10 +11,10 @@ import argparse
 import time
 import cv2
 
-from Layer1.detector      import RTDETRDetector
+from Layer1.detector       import RTDETRDetector
 from Layer1.trash_detector import TrashDetector
-from Layer2.tracker       import ByteTrackWrapper
-from Layer2.visualizer    import draw_tracks
+from Layer2.tracker        import ByteTrackWrapper
+from Layer2.visualizer     import draw_tracks
 
 
 def run(source: str, save: bool = False):
@@ -57,7 +57,14 @@ def run(source: str, save: bool = False):
         tracked = tracker.update(detections, trash_detections, (H, W))
 
         # ── Visualise ─────────────────────
-        vis = draw_tracks(frame.copy(), tracked, tracker.total_trash_events)
+        # Pass all three cumulative peak counters from tracker to HUD
+        vis = draw_tracks(
+            frame.copy(),
+            tracked,
+            total_trash_events = tracker.total_trash_events,
+            max_persons_seen   = tracker.max_persons_seen,   # ← NEW
+            max_objects_seen   = tracker.max_objects_seen,   # ← NEW
+        )
 
         now = time.time()
         cv2.putText(vis, f"FPS: {1/(now-prev+1e-9):.1f}",
@@ -75,7 +82,9 @@ def run(source: str, save: bool = False):
     if writer:
         writer.release()
     cv2.destroyAllWindows()
-    print("[Pipeline] Done.")
+    print(f"[Pipeline] Done. persons={tracker.max_persons_seen} "
+          f"objects={tracker.max_objects_seen} "
+          f"trash_events={tracker.total_trash_events}")
 
 
 if __name__ == "__main__":

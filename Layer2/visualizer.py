@@ -1,5 +1,10 @@
 """
-Layer 2 — Visualizer (fixed)
+Layer 2 — Visualizer
+
+Fix: HUD now shows PEAK (cumulative max) counts for persons and objects,
+so "Tracked persons: 1" and "Tracked objects: 2" stay visible permanently
+even after the person and objects leave the frame — matching the behaviour
+of "Trash events: 2" which also never resets.
 """
 
 import cv2
@@ -8,27 +13,38 @@ from typing import List
 from .track_state import TrackedObject
 from .config import SHOW_TRAILS
 
+
 def _id_color(tid: int):
-    np.random.seed(tid * 7 + 13)
+    np.random.seed(abs(tid) * 7 + 13)
     return tuple(int(x) for x in np.random.randint(80, 230, 3))
 
 
-def draw_tracks(frame: np.ndarray, tracks: List[TrackedObject],
-                total_trash_events: int = 0) -> np.ndarray:
+def draw_tracks(
+    frame:              np.ndarray,
+    tracks:             List[TrackedObject],
+    total_trash_events: int = 0,
+    max_persons_seen:   int = 0,   # ← NEW: peak persons, passed from tracker
+    max_objects_seen:   int = 0,   # ← NEW: peak objects, passed from tracker
+) -> np.ndarray:
 
     for t in tracks:
         x1, y1, x2, y2 = map(int, t.bbox)
+        is_ghost = t.track_id < 0
 
-        # ── Color: red ONLY for trash, unique color per ID for everything else
+        # ── Color ────────────────────────────────────────────────────
         if t.is_trash:
-            color = (0, 0, 220)
+            color = (0, 0, 220)           # red for all trash (real + ghost)
+        elif t.class_name == "person":
+            color = (0, 200, 0)           # green for persons
         else:
-            color = _id_color(t.track_id)
+            color = _id_color(t.track_id) # unique color per object ID
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-        # Label
-        if t.is_trash:
+        # ── Label ────────────────────────────────────────────────────
+        if is_ghost:
+            label = f"GHOST TRASH({t.trash_how}):{t.trash_label}"
+        elif t.is_trash:
             label = f"ID:{t.track_id} TRASH({t.trash_how}):{t.trash_label}"
         else:
             label = f"ID:{t.track_id} {t.class_name} {t.confidence:.2f}"
@@ -38,25 +54,22 @@ def draw_tracks(frame: np.ndarray, tracks: List[TrackedObject],
         cv2.putText(frame, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # Trail
-        if SHOW_TRAILS and len(t.trail) > 1:
+        # ── Trail (skip ghosts — they have no history) ───────────────
+        if SHOW_TRAILS and not is_ghost and len(t.trail) > 1:
             pts = list(t.trail)
             for i in range(1, len(pts)):
                 alpha = i / len(pts)
                 c = tuple(int(x * alpha) for x in color)
                 cv2.circle(frame, (int(pts[i][0]), int(pts[i][1])), 2, c, -1)
 
-    # ── Stats — fixed counts ──────────────────────────────
-    # Only count non-trash tracks for persons/objects
-    persons = sum(1 for t in tracks if t.class_name == "person" and not t.is_trash)
-    objects = sum(1 for t in tracks if t.class_name != "person" and not t.is_trash)
-    # Use cumulative trash count passed in, not current frame count
-    trash   = total_trash_events
-
+    # ── Stats HUD ────────────────────────────────────────────────────
+    # All three lines now use CUMULATIVE PEAK values so they never drop
+    # back to 0 once a person/object has been seen — consistent with
+    # how "Trash events" already behaves.
     for i, txt in enumerate([
-        f"Tracked persons : {persons}",
-        f"Tracked objects : {objects}",
-        f"Trash events    : {trash}",
+        f"Tracked persons : {max_persons_seen}",
+        f"Tracked objects : {max_objects_seen}",
+        f"Trash events    : {total_trash_events}",
     ]):
         cv2.putText(frame, txt, (10, 24 + i * 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1, cv2.LINE_AA)
