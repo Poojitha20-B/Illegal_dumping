@@ -17,14 +17,21 @@ from Layer2.tracker        import ByteTrackWrapper
 from Layer2.visualizer     import draw_tracks
 
 
+def _open_source(source: str):
+    """Return int for webcam index, str for file/URL."""
+    try:
+        return int(source)
+    except ValueError:
+        return source
+
+
 def run(source: str, save: bool = False):
     # ── Init all layers ───────────────────
     detector       = RTDETRDetector()
     trash_detector = TrashDetector()
     tracker        = ByteTrackWrapper()
 
-    src = int(source) if source.isdigit() else source
-    cap = cv2.VideoCapture(src)
+    cap = cv2.VideoCapture(_open_source(source))
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open: {source}")
 
@@ -37,7 +44,7 @@ def run(source: str, save: bool = False):
         writer = cv2.VideoWriter(
             "layer2_output.mp4",
             cv2.VideoWriter_fourcc(*"mp4v"),
-            fps, (W, H)
+            fps, (W, H),
         )
         print("[Pipeline] Saving → layer2_output.mp4")
 
@@ -57,19 +64,21 @@ def run(source: str, save: bool = False):
         tracked = tracker.update(detections, trash_detections, (H, W))
 
         # ── Visualise ─────────────────────
-        # Pass all three cumulative peak counters from tracker to HUD
         vis = draw_tracks(
             frame.copy(),
             tracked,
-            total_trash_events = tracker.total_trash_events,
-            max_persons_seen   = tracker.max_persons_seen,   # ← NEW
-            max_objects_seen   = tracker.max_objects_seen,   # ← NEW
+            tracker.total_trash_events,
+            tracker.max_persons_seen,
+            tracker.max_objects_seen,
+            tracker.max_trash_tagged,   # ← add
         )
 
         now = time.time()
-        cv2.putText(vis, f"FPS: {1/(now-prev+1e-9):.1f}",
-                    (W - 110, 24), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(
+            vis, f"FPS: {1/(now - prev + 1e-9):.1f}",
+            (W - 120, 24), cv2.FONT_HERSHEY_SIMPLEX,
+            0.6, (0, 255, 255), 1, cv2.LINE_AA,
+        )
         prev = now
 
         cv2.imshow("Layer 1+2 — Detection + Tracking", vis)
@@ -82,9 +91,12 @@ def run(source: str, save: bool = False):
     if writer:
         writer.release()
     cv2.destroyAllWindows()
-    print(f"[Pipeline] Done. persons={tracker.max_persons_seen} "
-          f"objects={tracker.max_objects_seen} "
-          f"trash_events={tracker.total_trash_events}")
+    print(
+        f"[Pipeline] Done. "
+        f"persons={tracker.max_persons_seen}  "
+        f"objects={tracker.max_objects_seen}  "
+        f"trash_events={tracker.total_trash_events}"
+    )
 
 
 if __name__ == "__main__":
