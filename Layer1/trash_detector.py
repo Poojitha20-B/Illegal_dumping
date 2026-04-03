@@ -107,7 +107,7 @@ class TrashDetector:
     # ── Pipeline B (fast throw) ────────────
     THROW_MIN_HELD      = 3    # held for at least 3 frames before vanishing
     # Object disappears within this many frames of being held = throw
-    THROW_VANISH_FRAMES = 4
+    THROW_VANISH_FRAMES = 2
 
     def __init__(self):
         self._tracked:       List[_TrackedObject] = []
