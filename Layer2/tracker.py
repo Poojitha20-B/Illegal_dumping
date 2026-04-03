@@ -7,12 +7,14 @@ Fixes in this version:
   - min_frames computed INSIDE the loop (was outside — caused UnboundLocalError on t)
   - Ghost throw bbox drawn as red TrackedObject with negative ID
   - Dead code removed: any_overlap was computed but never used
-  - max_persons_seen / max_objects_seen: cumulative peak counters so
-    HUD keeps showing counts even after objects leave frame
+  - max_persons_seen / max_objects_seen / max_trash_tagged: cumulative peak counters
+  - _last_known_bbox: 1-frame memory so trash tagging works when object just left frame
+  - _seen_object_ids: cumulative set so max_objects_seen counts unique objects ever seen
+  - Ghost duplicate fix: ghost won't fire if trash bbox matches a recently tagged track
 """
 
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set
 from scipy.optimize import linear_sum_assignment
 
 from Layer1.detector import Detection
@@ -94,16 +96,27 @@ class ByteTrackWrapper:
     Public attributes (all cumulative — never reset to 0 once set):
         total_trash_events  (int) — unique trash/dump events detected
         max_persons_seen    (int) — peak number of persons in frame at once
-        max_objects_seen    (int) — peak number of non-person objects in frame at once
+        max_objects_seen    (int) — total unique non-person objects ever seen
+        max_trash_tagged    (int) — total unique objects ever tagged as trash
     """
 
     def __init__(self):
-        self._tracks:             List[_Track]             = []
-        self._active_objects:     Dict[int, TrackedObject] = {}
-        self._ghost_draw_objects: List[TrackedObject]      = []
-        self._ghost_cooldown:     int                      = 0
-        self._frame_count:        int                      = 0
-        self._trash_track_ids:    set                      = set()
+        self._tracks:             List[_Track]                        = []
+        self._active_objects:     Dict[int, TrackedObject]            = {}
+        self._ghost_draw_objects: List[TrackedObject]                 = []
+        self._ghost_cooldown:     int                                 = 0
+        self._frame_count:        int                                 = 0
+        self._trash_track_ids:    Set[int]                            = set()
+
+        # 1-frame memory: track_id → (bbox, class_name, confidence)
+        # Trash detector fires on the same frame the object disappears.
+        # This lets _tag_trash match against where the object was 1 frame ago.
+        self._last_known_bbox: Dict[int, Tuple[np.ndarray, str, float]] = {}
+
+        # Cumulative set of all unique non-person object track IDs ever seen.
+        # len() of this gives max_objects_seen — correct even when objects
+        # appear at different times and never overlap in frame.
+        self._seen_object_ids:  Set[int] = set()
 
         # Cumulative counters — never decrease, shown permanently in HUD
         self.total_trash_events: int = 0
@@ -179,7 +192,6 @@ class ByteTrackWrapper:
             if t.frames_lost > 0:
                 continue
 
-            # Per-class threshold — objects always show on frame 1
             min_frames = MIN_TRACK_FRAMES if t.class_name == "person" else 1
             if t.frames_seen < min_frames:
                 continue
@@ -209,6 +221,18 @@ class ByteTrackWrapper:
             if tid not in seen_ids:
                 del self._active_objects[tid]
 
+        # ── Step 7b: save last-known positions BEFORE trash tagging ───
+        # Trash detector fires on the disappearance frame — ByteTrack has
+        # already dropped the track from output. Store where it was so
+        # _tag_trash can still match against it 1 frame later.
+        for obj in output:
+            if obj.track_id > 0:
+                self._last_known_bbox[obj.track_id] = (
+                    obj.bbox.copy(),
+                    obj.class_name,
+                    obj.confidence,
+                )
+
         # ── Step 8: tag trash + update cumulative event counter ───────
         self._tag_trash(output, trash_detections)
 
@@ -216,22 +240,22 @@ class ByteTrackWrapper:
         output.extend(self._ghost_draw_objects)
 
         # ── Step 9: update peak HUD counters ──────────────────────────
-        # Count only real tracks (positive IDs) — exclude ghost placeholders
+        # Persons: peak simultaneous count
         current_persons = sum(
             1 for t in output
             if t.class_name == "person" and t.track_id > 0
         )
-        current_objects = sum(
-            1 for t in output
-            if t.class_name != "person" and t.track_id > 0
-        )
-        current_trash_tagged = sum(
-            1 for t in output
-            if t.is_trash and t.track_id > 0
-        )
         self.max_persons_seen = max(self.max_persons_seen, current_persons)
-        self.max_objects_seen = max(self.max_objects_seen, current_objects)
-        self.max_trash_tagged = max(self.max_trash_tagged, current_trash_tagged)
+
+        # Objects: cumulative unique IDs ever seen (not simultaneous peak)
+        # — correct when cup and handbag appear at different times
+        for t in output:
+            if t.class_name != "person" and t.track_id > 0:
+                self._seen_object_ids.add(t.track_id)
+        self.max_objects_seen = len(self._seen_object_ids)
+
+        # Trash tagged: cumulative unique trash track IDs ever confirmed
+        self.max_trash_tagged = len(self._trash_track_ids)
 
         return output
 
@@ -273,11 +297,15 @@ class ByteTrackWrapper:
         """
         Tag tracked objects as trash and maintain cumulative event count.
 
-        Matching rules:
-          1. Never tag a person track as trash — skip all person tracks
-          2. Match trash bbox to closest non-person track by IoU then centroid distance
-          3. Ghost throw (no matching track): one event per GHOST_COOLDOWN_FRAMES window,
-             rendered as a negative-ID TrackedObject so a red box appears on screen
+        Matching strategy (two passes):
+          Pass 1 — search live tracks in current output
+          Pass 2 — search _last_known_bbox (1 frame ago) if pass 1 fails
+                   Handles the timing gap where trash fires on the exact
+                   frame the object disappears from ByteTrack output.
+
+        Ghost duplicate guard — before firing a ghost event, check if the
+        trash bbox matches a recently tagged track's last known position.
+        If yes, this is a duplicate fire from the same throw — skip it.
         """
         for trash in trash_detections:
             best_iou:   float                   = 0.0
@@ -287,6 +315,7 @@ class ByteTrackWrapper:
             tcx = (trash.bbox[0] + trash.bbox[2]) / 2
             tcy = (trash.bbox[1] + trash.bbox[3]) / 2
 
+            # ── Pass 1: search live tracks ────────────────────────────
             for t in tracks:
                 if t.class_name == "person":
                     continue
@@ -294,32 +323,67 @@ class ByteTrackWrapper:
                 cx   = (t.bbox[0] + t.bbox[2]) / 2
                 cy   = (t.bbox[1] + t.bbox[3]) / 2
                 dist = np.hypot(tcx - cx, tcy - cy)
-
-                # Prefer highest IoU; fall back to nearest centroid when IoU = 0
                 if iou > best_iou or (best_iou == 0 and dist < best_dist):
                     best_iou   = iou
                     best_dist  = dist
                     best_track = t
 
-            if best_track is not None and (best_iou > 0.10 or best_dist < 80):
-                # ── Matched to a real tracked object ─────────────────
+            # ── Pass 2: search last-known positions if pass 1 failed ──
+            if best_track is None or (best_iou <= 0.05 and best_dist >= 150):
+                for tid, (last_bbox, class_name, conf) in self._last_known_bbox.items():
+                    if class_name == "person":
+                        continue
+                    if tid in self._trash_track_ids:
+                        continue  # already tagged — skip
+                    iou  = _single_iou(trash.bbox, last_bbox)
+                    cx   = (last_bbox[0] + last_bbox[2]) / 2
+                    cy   = (last_bbox[1] + last_bbox[3]) / 2
+                    dist = np.hypot(tcx - cx, tcy - cy)
+                    if iou > best_iou or (best_iou == 0 and dist < best_dist):
+                        best_iou  = iou
+                        best_dist = dist
+                        best_track = TrackedObject(
+                            track_id   = tid,
+                            bbox       = last_bbox.copy(),
+                            class_name = class_name,
+                            confidence = conf,
+                            is_trash   = True,
+                        )
+
+            # ── Tag or ghost ──────────────────────────────────────────
+            if best_track is not None and (best_iou > 0.05 or best_dist < 150):
                 best_track.is_trash    = True
                 best_track.trash_label = trash.label
                 best_track.trash_how   = trash.how
 
-                # Increment only the first time this track ID is flagged
                 if best_track.track_id not in self._trash_track_ids:
                     self._trash_track_ids.add(best_track.track_id)
                     self.total_trash_events += 1
+                    # If matched via last-known (not in live output), add to
+                    # output so Step 9 counters see it this frame
+                    live_ids = {t.track_id for t in tracks}
+                    if best_track.track_id not in live_ids:
+                        tracks.append(best_track)
 
             else:
-                # ── Ghost throw — object left frame before being tracked ──
-                # Cooldown prevents one physical throw being counted across
-                # multiple frames. One cooldown window = exactly one event.
-                if self._ghost_cooldown == 0:
+                # ── Ghost duplicate guard ─────────────────────────────
+                # If this trash bbox is near a recently tagged track's last
+                # known position, it's a duplicate fire — don't count it.
+                already_counted = False
+                for tid, (last_bbox, class_name, _) in self._last_known_bbox.items():
+                    if tid not in self._trash_track_ids:
+                        continue
+                    iou  = _single_iou(trash.bbox, last_bbox)
+                    cx   = (last_bbox[0] + last_bbox[2]) / 2
+                    cy   = (last_bbox[1] + last_bbox[3]) / 2
+                    dist = np.hypot(tcx - cx, tcy - cy)
+                    if iou > 0.05 or dist < 150:
+                        already_counted = True
+                        break
+
+                if not already_counted and self._ghost_cooldown == 0:
                     self.total_trash_events += 1
                     self._ghost_cooldown = GHOST_COOLDOWN_FRAMES
-
                     ghost_obj = TrackedObject(
                         track_id    = -(self.total_trash_events),
                         bbox        = trash.bbox.copy(),

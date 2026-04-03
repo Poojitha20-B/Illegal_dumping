@@ -1,9 +1,8 @@
 """
 Layer 2 — Visualizer
 
-HUD shows PEAK (cumulative max) counts passed in from the tracker,
-so counts never drop to 0 after objects leave frame — consistent
-with how total_trash_events already behaves.
+All 4 HUD counters use cumulative peak values passed from tracker.
+Visualizer is stateless — it only displays what it receives.
 """
 
 import cv2
@@ -22,16 +21,15 @@ def draw_tracks(
     frame:              np.ndarray,
     tracks:             List[TrackedObject],
     total_trash_events: int = 0,
-    max_persons_seen:   int = 0,   # peak value maintained by tracker
-    max_objects_seen:   int = 0,   # peak value maintained by tracker
-    max_trash_tagged:   int = 0,   # ← add
+    max_persons_seen:   int = 0,
+    max_objects_seen:   int = 0,
+    max_trash_tagged:   int = 0,
 ) -> np.ndarray:
 
     for t in tracks:
         x1, y1, x2, y2 = map(int, t.bbox)
         is_ghost = t.track_id < 0
 
-        # ── Color ────────────────────────────────────────────────────
         if t.is_trash:
             color = (0, 0, 220)
         elif t.class_name == "person":
@@ -41,7 +39,6 @@ def draw_tracks(
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-        # ── Label ────────────────────────────────────────────────────
         if is_ghost:
             label = f"GHOST TRASH({t.trash_how}):{t.trash_label}"
         elif t.is_trash:
@@ -54,7 +51,6 @@ def draw_tracks(
         cv2.putText(frame, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # ── Trail (skip ghosts — no history) ─────────────────────────
         if SHOW_TRAILS and not is_ghost and len(t.trail) > 1:
             pts = list(t.trail)
             for i in range(1, len(pts)):
@@ -62,13 +58,11 @@ def draw_tracks(
                 c = tuple(int(x * alpha) for x in color)
                 cv2.circle(frame, (int(pts[i][0]), int(pts[i][1])), 2, c, -1)
 
-    # ── Stats HUD — use PEAK values from tracker, never compute here ──
-    #trash_tagged = sum(1 for t in tracks if t.is_trash and t.track_id >= 0)
-
+    # ── Stats HUD — all peak values from tracker, nothing computed here ──
     for i, txt in enumerate([
         f"Tracked persons : {max_persons_seen}",
         f"Tracked objects : {max_objects_seen}",
-        f"Trash tagged    : {max_trash_tagged}",   # ← peak, never drops
+        f"Trash tagged    : {max_trash_tagged}",
         f"Trash events    : {total_trash_events}",
     ]):
         cv2.putText(frame, txt, (10, 24 + i * 22),
