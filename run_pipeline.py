@@ -18,7 +18,6 @@ from Layer2.visualizer     import draw_tracks
 
 
 def _open_source(source: str):
-    """Return int for webcam index, str for file/URL."""
     try:
         return int(source)
     except ValueError:
@@ -26,7 +25,6 @@ def _open_source(source: str):
 
 
 def run(source: str, save: bool = False):
-    # ── Init all layers ───────────────────
     detector       = RTDETRDetector()
     trash_detector = TrashDetector()
     tracker        = ByteTrackWrapper()
@@ -70,7 +68,7 @@ def run(source: str, save: bool = False):
             tracker.total_trash_events,
             tracker.max_persons_seen,
             tracker.max_objects_seen,
-            tracker.max_trash_tagged,   # ← add
+            tracker.max_trash_tagged,
         )
 
         now = time.time()
@@ -95,6 +93,7 @@ def run(source: str, save: bool = False):
         f"[Pipeline] Done. "
         f"persons={tracker.max_persons_seen}  "
         f"objects={tracker.max_objects_seen}  "
+        f"trash_tagged={tracker.max_trash_tagged}  "
         f"trash_events={tracker.total_trash_events}"
     )
 
