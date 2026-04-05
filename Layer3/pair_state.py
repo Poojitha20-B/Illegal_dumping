@@ -42,6 +42,7 @@ class PairState:
         last_person_bbox:   previous frame's person bbox (for velocity calc)
         last_object_bbox:   previous frame's object bbox (for velocity calc)
         last_distance:      previous frame's centroid distance (for delta calc)
+        min_distance_seen:  closest the object ever got to the person (pixels)
     """
 
     person_id: int
@@ -53,23 +54,27 @@ class PairState:
         repr=False,
     )
 
-    frames_seen:     int   = 0
-    frames_missing:  int   = 0
-    held_frames:     int   = 0
-    released_frames: int   = 0
-    ever_held:       bool  = False
-    is_active:       bool  = True
+    frames_seen:      int   = 0
+    frames_missing:   int   = 0
+    held_frames:      int   = 0
+    released_frames:  int   = 0
+    ever_held:        bool  = False
+    is_active:        bool  = True
+    min_distance_seen: float = float("inf")   # FIX: track closest approach
 
     # Previous-frame state for delta features
     last_person_bbox: Optional[np.ndarray] = field(default=None, repr=False)
     last_object_bbox: Optional[np.ndarray] = field(default=None, repr=False)
     last_distance:    Optional[float]      = None
 
-    def push(self, feature_vec: np.ndarray):
+    def push(self, feature_vec: np.ndarray, distance: float = float("inf")):
         """Append one frame's feature vector to the buffer."""
         self.sequence.append(feature_vec.copy())
         self.frames_seen    += 1
         self.frames_missing  = 0   # reset — we saw both tracks this frame
+        # FIX: track the minimum distance ever observed for this pair
+        if distance < self.min_distance_seen:
+            self.min_distance_seen = distance
 
     def mark_missing(self):
         """Call when one or both tracks were absent this frame."""
@@ -88,13 +93,37 @@ class PairState:
         """
         True if this pair has enough history for Layer 4 to run inference.
 
+        FIX: Removed the hard `ever_held` requirement.
+
+        Original logic required ever_held=True, which means the object centroid
+        had to come within HOLD_DISTANCE_PX of the person centroid at least once.
+        For car-window dumping, the person body centroid and the held object
+        centroid are naturally far apart (~290px in this video), so ever_held
+        was NEVER set even when the person was clearly holding the object.
+
+        New logic: a pair is ready if it is active, has enough history,
+        AND was either explicitly held (ever_held) OR came close enough
+        to be plausibly associated (proximity_eligible). This means:
+          - Classic pedestrian dumping → ever_held=True path (unchanged)
+          - Car-window / arm-extended throwing → proximity_eligible path (new)
+
         Args:
             min_frames: minimum sequence length required (default 8).
         """
+        has_enough_history = len(self.sequence) >= min_frames
+
+        # Original path: object came within HOLD_DISTANCE_PX (e.g. pedestrian)
+        held_path = self.ever_held
+
+        # FIX: new path — pair was active and seen consistently even if never
+        # close enough to cross the hold threshold (e.g. car-window throw).
+        # Require at least min_frames of consistent co-presence.
+        proximity_eligible = (self.frames_seen >= min_frames)
+
         return (
             self.is_active
-            and self.ever_held                  # only pairs that had contact
-            and len(self.sequence) >= min_frames
+            and has_enough_history
+            and (held_path or proximity_eligible)   # FIX: OR instead of AND
         )
 
     def get_sequence(self) -> np.ndarray:
@@ -122,5 +151,6 @@ class PairState:
         return (
             f"PairState(person={self.person_id}, obj={self.object_id}, "
             f"frames={self.frames_seen}, held={self.held_frames}, "
+            f"min_dist={self.min_distance_seen:.1f}, "
             f"seq_len={len(self.sequence)}, active={self.is_active})"
         )
