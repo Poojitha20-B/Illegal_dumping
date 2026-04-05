@@ -128,7 +128,9 @@ class MemoryEngine:
                 both_visible     = True,
             )
 
-            pair.push(feat)
+            # FIX: pass current distance into push() so PairState can track
+            # min_distance_seen — useful for diagnostics and future thresholding
+            pair.push(feat, distance=dist)
 
             # Save state for next frame's delta calculations
             pair.last_person_bbox = person_track.bbox.copy()
