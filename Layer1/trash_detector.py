@@ -115,11 +115,7 @@ class TrashDetector:
         # key = approximate last centroid, value = (held_frames, frames_since_gone)
         self._ghosts: List[dict] = []
 
-    def detect(
-        self,
-        frame_shape:    tuple,
-        all_detections: List[Detection],
-    ) -> List[TrashDetection]:
+    def detect(self, frame_shape: tuple, all_detections: List[Detection]) -> List[TrashDetection]:
 
         H, W = frame_shape[:2]
         persons = [d for d in all_detections if d.class_name == "person"]
