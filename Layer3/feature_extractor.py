@@ -54,19 +54,7 @@ import numpy as np
 from Layer2.track_state import TrackedObject
 from Layer2.bin_tracker import TrackedBin
 
-from .config import (
-    BIN_REGION_SHRINK,
-    BIN_ZONE_EXPAND,
-    BIN_ASSOCIATION_MAX_DIST,
-    SEQUENCE_WINDOW,
-    ENTRY_VY_THRESHOLD,
-    ENTRY_MIN_FRAMES,
-    DBG_REGION_COLOR,
-    DBG_ZONE_COLOR,
-    DBG_TRAIL_COLOR,
-    DBG_LINE_COLOR,
-    DBG_SCORE_COLOR,
-)
+import Layer3.config as cfg
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Feature vector index constants — makes code self-documenting
@@ -177,9 +165,9 @@ class _PairState:
         self.sequence.append(vec)
         self.timestamps.append(ts)
         # Keep only the most recent SEQUENCE_WINDOW entries
-        if len(self.sequence) > SEQUENCE_WINDOW:
-            self.sequence  = self.sequence[-SEQUENCE_WINDOW:]
-            self.timestamps = self.timestamps[-SEQUENCE_WINDOW:]
+        if len(self.sequence) > cfg.SEQUENCE_WINDOW:
+            self.sequence  = self.sequence[-cfg.SEQUENCE_WINDOW:]
+            self.timestamps = self.timestamps[-cfg.SEQUENCE_WINDOW:]
 
     def as_output(self) -> Dict:
         """Return the standard Layer 3 → Layer 4 output dict."""
@@ -217,7 +205,7 @@ class BinInteractionFeatureExtractor:
 
         # How many frames a pair state survives without being refreshed.
         # If a trash track disappears for longer than this it is cleared.
-        self._STALE_FRAMES = SEQUENCE_WINDOW * 2
+        self._STALE_FRAMES = cfg.SEQUENCE_WINDOW * 2
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Public API
@@ -308,8 +296,8 @@ class BinInteractionFeatureExtractor:
             nearest_bin = best_bin
 
             # ── Compute bin geometry ──────────────────────────────────────────
-            bin_region = _scale_bbox(nearest_bin.bbox, BIN_REGION_SHRINK)
-            bin_zone   = _scale_bbox(nearest_bin.bbox, BIN_ZONE_EXPAND)
+            bin_region = _scale_bbox(nearest_bin.bbox, cfg.BIN_REGION_SHRINK)
+            bin_zone   = _scale_bbox(nearest_bin.bbox, cfg.BIN_ZONE_EXPAND)
             bin_center = _centroid(nearest_bin.bbox)
 
             # ── Per-frame spatial features ────────────────────────────────────
@@ -420,11 +408,11 @@ class BinInteractionFeatureExtractor:
             bin_cx, bin_cy = _centroid(tb.bbox)
             d = _euclidean((tx, ty), (bin_cx, bin_cy))
 
-            if d > BIN_ASSOCIATION_MAX_DIST:
+            if d > cfg.BIN_ASSOCIATION_MAX_DIST:
                 continue   # too far — ignore
 
             # Normalised distance score (1 = touching, 0 = at max distance)
-            norm_dist = d / BIN_ASSOCIATION_MAX_DIST
+            norm_dist = d / cfg.BIN_ASSOCIATION_MAX_DIST
             dist_score = 1.0 - norm_dist   # higher = closer
 
             # Convergence score — is trash moving TOWARD this bin?
@@ -487,10 +475,10 @@ class BinInteractionFeatureExtractor:
         if is_in_region:
             score += 0.4
 
-        if velocity_y >= ENTRY_VY_THRESHOLD:
+        if velocity_y >= cfg.ENTRY_VY_THRESHOLD:
             score += 0.3
 
-        if state.consecutive_in_region >= ENTRY_MIN_FRAMES:
+        if state.consecutive_in_region >= cfg.ENTRY_MIN_FRAMES:
             score += 0.3
 
         return min(score, 1.0)
@@ -521,20 +509,20 @@ class BinInteractionFeatureExtractor:
 
         # Draw bin regions and zones
         for tb in tracked_bins:
-            bin_region = _scale_bbox(tb.bbox, BIN_REGION_SHRINK)
-            bin_zone   = _scale_bbox(tb.bbox, BIN_ZONE_EXPAND)
+            bin_region = _scale_bbox(tb.bbox, cfg.BIN_REGION_SHRINK)
+            bin_zone   = _scale_bbox(tb.bbox, cfg.BIN_ZONE_EXPAND)
 
             # Zone (outer, yellow)
             cv2.rectangle(
                 frame,
                 (int(bin_zone[0]), int(bin_zone[1])),
                 (int(bin_zone[2]), int(bin_zone[3])),
-                DBG_ZONE_COLOR, 1,
+                cfg.DBG_ZONE_COLOR, 1,
             )
             cv2.putText(
                 frame, "zone",
                 (int(bin_zone[0]) + 2, int(bin_zone[1]) - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.4, DBG_ZONE_COLOR, 1, cv2.LINE_AA,
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, cfg.DBG_ZONE_COLOR, 1, cv2.LINE_AA,
             )
 
             # Region (inner, green)
@@ -542,12 +530,12 @@ class BinInteractionFeatureExtractor:
                 frame,
                 (int(bin_region[0]), int(bin_region[1])),
                 (int(bin_region[2]), int(bin_region[3])),
-                DBG_REGION_COLOR, 1,
+                cfg.DBG_REGION_COLOR, 1,
             )
             cv2.putText(
                 frame, "region",
                 (int(bin_region[0]) + 2, int(bin_region[3]) + 12),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.4, DBG_REGION_COLOR, 1, cv2.LINE_AA,
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, cfg.DBG_REGION_COLOR, 1, cv2.LINE_AA,
             )
 
         # Draw per-trash debug info
@@ -564,7 +552,7 @@ class BinInteractionFeatureExtractor:
                 cv2.circle(
                     frame,
                     (int(pts[i][0]), int(pts[i][1])),
-                    2, DBG_TRAIL_COLOR, -1,
+                    2, cfg.DBG_TRAIL_COLOR, -1,
                 )
 
             # Best bin connector (orange line) + entry score
@@ -577,7 +565,7 @@ class BinInteractionFeatureExtractor:
                     frame,
                     (int(trash_cx), int(trash_cy)),
                     (int(bin_cx), int(bin_cy)),
-                    DBG_LINE_COLOR, 1, cv2.LINE_AA,
+                    cfg.DBG_LINE_COLOR, 1, cv2.LINE_AA,
                 )
 
                 key = (trash.track_id, nearest_bin.bin_id)
@@ -591,7 +579,7 @@ class BinInteractionFeatureExtractor:
                         frame, label,
                         (int(trash_cx) + 4, int(trash_cy) - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.42,
-                        DBG_SCORE_COLOR, 1, cv2.LINE_AA,
+                        cfg.DBG_SCORE_COLOR, 1, cv2.LINE_AA,
                     )
 
         return frame

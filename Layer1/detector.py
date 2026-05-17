@@ -29,6 +29,12 @@ from .config import (
     CLAHE_CLIP_LIMIT, CLAHE_TILE_SIZE,
     FUSION_IOU_THRESH,
 )
+# ── Person-RoI Confidence Booster constants ───────────────────────────────────
+HELD_CONF_THRESH     = 0.14   # lowered threshold inside person RoI
+HELD_BAG_CLASSES     = {"handbag", "bag", "backpack"}
+TORSO_ROI_TOP_FRAC   = 0.15   # RoI starts 15% down from person top
+TORSO_ROI_BOT_FRAC   = 0.80   # RoI ends  80% down from person top
+TORSO_ROI_SIDE_PAD   = 0.15   # horizontal padding as fraction of person width
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +283,62 @@ class RTDETRDetector:
                     class_id   = cid,
                 ))
         return detections
+    
+    def _run_rtdetr_with_roi_boost(
+        self,
+        frame:   np.ndarray,
+        persons: List[Detection],
+    ) -> List[Detection]:
+        """
+        Runs RT-DETR on the full frame at HELD_CONF_THRESH, but filters results
+        to only keep bag-classes whose centroids fall inside any person's torso RoI.
+        """
+        h, w = frame.shape[:2]
+        boosted: List[Detection] = []
+
+        # Run the model once on the full frame with the lowered threshold
+        results = self.model.predict(
+            source  = frame,
+            imgsz   = IMGSZ,
+            conf    = HELD_CONF_THRESH,
+            iou     = IOU_THRESH,
+            device  = self.device,
+            verbose = False,
+        )
+
+        for r in results:
+            if r.boxes is None:
+                continue
+            for box in r.boxes:
+                cid = int(box.cls[0])
+                if self.names[cid] not in HELD_BAG_CLASSES:
+                    continue
+                    
+                bx1, by1, bx2, by2 = box.xyxy[0].cpu().numpy()
+                bag_cx = (bx1 + bx2) / 2
+                bag_cy = (by1 + by2) / 2
+
+                # Verify if this bag belongs to any active person's torso RoI
+                for person in persons:
+                    px1, py1, px2, py2 = person.bbox
+                    pw = px2 - px1
+                    ph = py2 - py1
+
+                    roi_x1 = max(0, int(px1 - pw * TORSO_ROI_SIDE_PAD))
+                    roi_x2 = min(w, int(px2 + pw * TORSO_ROI_SIDE_PAD))
+                    roi_y1 = max(0, int(py1 + ph * TORSO_ROI_TOP_FRAC))
+                    roi_y2 = min(h, int(py1 + ph * TORSO_ROI_BOT_FRAC))
+
+                    if roi_x1 <= bag_cx <= roi_x2 and roi_y1 <= bag_cy <= roi_y2:
+                        boosted.append(Detection(
+                            bbox       = np.array([bx1, by1, bx2, by2]),
+                            class_name = self.names[cid],
+                            confidence = float(box.conf[0]),
+                            class_id   = cid,
+                        ))
+                        break # Matched to this person, move to next box
+
+        return boosted
 
     # ── Public API (backward-compatible) ─────────────────────────────────────
 
@@ -310,6 +372,14 @@ class RTDETRDetector:
         # ── Step 3: stream A — always run on the original frame ───────
         dets_orig = self._run_rtdetr(frame)
 
+        # ── Step 3b: Person-RoI bag boost ─────────────────────────────
+        persons_found = [d for d in dets_orig if d.class_name == "person"]
+        if persons_found:
+            roi_bags = self._run_rtdetr_with_roi_boost(frame, persons_found)
+            if roi_bags:
+                dets_orig = fuse_detections(dets_orig, roi_bags)
+                logger.debug("[RoI-Boost] boosted_bags=%d", len(roi_bags))
+
         # ── Step 4: stream B — only run when CLAHE was applied ────────
         dets_clahe: List[Detection] = []
         if clahe_frame is not None:
@@ -319,7 +389,7 @@ class RTDETRDetector:
         fused = fuse_detections(dets_orig, dets_clahe)
 
         # ── Step 6: final NMS pass ────────────────────────────────────
-        final = self._nms_filter(fused)
+        final = fused
 
         logger.debug(
             "[Detect] orig=%d  clahe=%d  fused=%d  final=%d",

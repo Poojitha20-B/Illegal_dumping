@@ -1,5 +1,5 @@
 """
-VidTrace — Full Pipeline Runner (Layers 1-5)
+VidTrace — Full Pipeline Runner (Layers 1-5) + Auto-Calibration
 
 Controls
 --------
@@ -7,6 +7,11 @@ Q  : quit
 P  : pause / resume
 D  : toggle Layer 3 debug overlay
 R  : toggle Layer 5 reasoning overlay
+
+Calibration
+-----------
+Runs automatically on startup (first 60 frames).
+Skip with --no-calibrate to use config defaults.
 """
 
 from __future__ import annotations
@@ -16,10 +21,12 @@ import time
 from collections import deque
 import cv2
 import numpy as np
-from enhancer import Enhancer, EnhancementResult, cap_frame_generator
+
+from enhancer                 import Enhancer, EnhancementResult, cap_frame_generator
 from Layer1.detector          import RTDETRDetector
 from Layer1.trash_detector    import TrashDetector
 from Layer1.bin_detector      import BinDetector
+from Layer1.calibrator        import calibrate, apply, defaults
 from Layer2.tracker           import ByteTrackWrapper
 from Layer2.bin_tracker       import BinTracker
 from Layer2.visualizer        import draw_tracks
@@ -37,11 +44,9 @@ from Layer5.visualizer        import (
 _COL_BG = (20, 20, 20)
 
 
+# ── Geometry helpers ──────────────────────────────────────────────────────────
+
 def _bbox_area(bbox) -> float:
-    """
-    Return w*h for a bbox [x1, y1, x2, y2].
-    Returns 0.0 for ghost/off-screen tracks (negative coords or inverted box).
-    """
     x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
     w = x2 - x1
     h = y2 - y1
@@ -72,10 +77,28 @@ def _draw_l4_banners(frame, events, W, H):
     return frame
 
 
-def run(source: str, save: bool = False, debug: bool = False) -> None:
+# ── Main pipeline ─────────────────────────────────────────────────────────────
+
+def run(source, save, debug, do_calibrate=True):
+
     print("[Pipeline] Booting VidTrace...")
 
-    detector       = RTDETRDetector()
+    # ── Init detector first (calibrator needs it) ─────────────────────────────
+    detector = RTDETRDetector()
+
+    # ── Auto-calibration pass ─────────────────────────────────────────────────
+    # ── Auto-calibration pass ─────────────────────────────────────────────────
+    if do_calibrate:
+        print("[Pipeline] Running calibration pass...")
+        calib = calibrate(source, detector, verbose=True)
+        cfg   = calib.cfg
+        apply(cfg)
+        print("[Pipeline] Calibration applied — starting main pipeline.\n")
+    else:
+        cfg = defaults()
+        print("[Pipeline] Skipping calibration — using config defaults.")
+
+    # ── Init remaining layers (after calibration so thresholds are patched) ───
     trash_detector = TrashDetector()
     bin_detector   = BinDetector()
     tracker        = ByteTrackWrapper()
@@ -120,10 +143,11 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                     break
                 frame_idx += 1
 
-                # Layers 1-4
+                # ── Layers 1-4 ────────────────────────────────────────────────
                 frame_buffer.append(frame.copy())
                 dets         = detector.detect(frame)
-                trash_dets   = trash_detector.detect(frame.shape, dets)
+                trash_dets = trash_detector.detect(frame.shape, dets)
+                # Debug all detections going IN to trash_detector
                 bin_dets     = bin_detector.detect(frame)
                 tracked_objs = tracker.update(dets, trash_dets, (H, W))
                 tracked_bins = bin_tracker.update(bin_dets)
@@ -131,7 +155,7 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                 extractor.update(tracked_objs, tracked_bins, ts)
                 l4_events    = inference.update(tracked_objs, tracked_bins)
 
-                # Layer 5
+                # ── Layer 5 ───────────────────────────────────────────────────
                 l5_new = agent.update(frame_idx, tracked_objs, tracked_bins, l4_events)
                 if l5_new:
                     last_l5 = l5_new
@@ -141,17 +165,13 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                             person_obj = next(
                                 (o for o in tracked_objs
                                  if o.track_id == verdict["person_id"]),
-                                None
+                                None,
                             )
 
-                            # Override: pick the person CLOSEST to the trash
-                            # object — more reliable than largest area, which
-                            # tends to pick background bystanders.
-                            # Ghost tracks are rejected via _bbox_area > 500.
                             trash_obj = next(
                                 (o for o in tracked_objs
                                  if o.track_id == verdict["object_id"]),
-                                None
+                                None,
                             )
                             all_persons = [
                                 o for o in tracked_objs
@@ -165,7 +185,7 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                                     key=lambda o: (
                                         (_bbox_centre(o.bbox)[0] - tx) ** 2
                                         + (_bbox_centre(o.bbox)[1] - ty) ** 2
-                                    )
+                                    ),
                                 )
                                 if (
                                     person_obj is None
@@ -179,7 +199,6 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                                     )
                                     person_obj = closest
 
-                            # Debug: print all tracks and selected person
                             if person_obj is not None:
                                 for o in tracked_objs:
                                     print(
@@ -199,22 +218,18 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                                     f"running enhancer on full frame"
                                 )
 
-                            # Run enhancer regardless of whether a valid
-                            # person_obj was found — the plate may still be
-                            # visible in the lookahead frames even if the
-                            # person/trash tracks have gone stale.
                             combined = list(cap_frame_generator(cap, 150))
-                            result = enhancer.process_event(
-                                frame=frame,
-                                person_bbox=(
+                            result   = enhancer.process_event(
+                                frame      = frame,
+                                person_bbox= (
                                     person_obj.bbox
                                     if person_obj is not None
                                     else None
                                 ),
-                                person_id=verdict["person_id"],
-                                pair_id=verdict["pair_id"],
-                                save_dir="evidence",
-                                frame_iter=(
+                                person_id  = verdict["person_id"],
+                                pair_id    = verdict["pair_id"],
+                                save_dir   = "evidence",
+                                frame_iter = (
                                     iter(combined) if combined else None
                                 ),
                             )
@@ -231,7 +246,7 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                                     f"scanned={result.frames_scanned}f"
                                 )
 
-                # Visualise
+                # ── Visualise ─────────────────────────────────────────────────
                 vis = frame.copy()
                 vis = draw_tracks(vis, tracked_objs, tracker.total_trash_events)
                 vis = draw_bins(vis, tracked_bins, bin_tracker.total_bins_flagged)
@@ -244,7 +259,7 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                 if show_reason:
                     vis = draw_l5_reasoning(vis, agent)
 
-                # HUD
+                # ── HUD ───────────────────────────────────────────────────────
                 persons = sum(1 for t in tracked_objs if t.class_name == "person")
                 objects = sum(1 for t in tracked_objs if t.is_trash)
                 cv2.rectangle(vis, (0, 0), (235, 95), (0, 0, 0), -1)
@@ -260,11 +275,13 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
                 fps_live  = 1.0 / (now - prev_time + 1e-9)
                 prev_time = now
                 cv2.putText(vis, f"FPS:{fps_live:.1f}  F:{frame_idx}",
-                            (W-165, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1)
+                            (W-165, 20), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.45, (255, 255, 255), 1)
                 cv2.putText(vis,
                             f"Bins:{len(tracked_bins)} visible "
                             f"{bin_tracker.total_bins_flagged} flagged",
-                            (W-260, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0,200,255), 1)
+                            (W-260, 38), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.38, (0, 200, 255), 1)
 
                 if writer:
                     writer.write(vis)
@@ -311,8 +328,10 @@ def run(source: str, save: bool = False, debug: bool = False) -> None:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--source", default="0")
-    p.add_argument("--save",   action="store_true")
-    p.add_argument("--debug",  action="store_true")
+    p.add_argument("--source",        default="0")
+    p.add_argument("--save",          action="store_true")
+    p.add_argument("--debug",         action="store_true")
+    p.add_argument("--no-calibrate",  action="store_true",
+                   help="Skip auto-calibration and use config defaults")
     args = p.parse_args()
-    run(args.source, args.save, args.debug)
+    run(args.source, args.save, args.debug, do_calibrate=not args.no_calibrate)

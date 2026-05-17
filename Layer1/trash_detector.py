@@ -21,6 +21,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 from .detector import Detection
 from enum import Enum
+try:
+    from Layer2.config import MAX_POSSESSION_DISTANCE_PX, POSSESSION_HISTORY_FRAMES
+except ImportError:
+    MAX_POSSESSION_DISTANCE_PX = 150
+    POSSESSION_HISTORY_FRAMES  = 20
 
 
 class ObjectState(Enum):
@@ -75,7 +80,8 @@ def _centroid(bbox: np.ndarray) -> Tuple[float, float]:
 
 
 def _near_person(obj_bbox: np.ndarray, persons: List[Detection],
-                 iou_thresh=0.08) -> bool:
+                 iou_thresh=0.08, dist_px=MAX_POSSESSION_DISTANCE_PX) -> bool:
+    """Current-frame proximity check (used for ongoing HELD tracking)."""
     for p in persons:
         if _iou(obj_bbox, p.bbox) > iou_thresh:
             return True
@@ -83,6 +89,48 @@ def _near_person(obj_bbox: np.ndarray, persons: List[Detection],
         px1, py1, px2, py2 = p.bbox
         if px1 <= cx <= px2 and py1 <= cy <= py2:
             return True
+        # Distance-based fallback — catches held bag with low/zero IoU
+        pcx, pcy = _centroid(p.bbox)
+        if np.hypot(cx - pcx, cy - pcy) <= dist_px:
+            return True
+    return False
+
+def _near_person_historical(
+    obj_bbox: np.ndarray,
+    person_history: List[dict],          # list of {"centroid": (x,y), "velocity": (vx,vy)}
+    max_dist_px: float = MAX_POSSESSION_DISTANCE_PX,
+    max_frames_back: int = POSSESSION_HISTORY_FRAMES,
+) -> bool:
+    """
+    Projected Proximity Search — Fix for Root Causes 2 & 3.
+
+    When a bag reappears after occlusion, the person may have already
+    moved away. This checks the bag's centroid against the person's
+    HISTORICAL centroids (+ optional velocity extrapolation) up to
+    max_frames_back frames ago.
+
+    Returns True if the bag was plausibly near the person recently.
+    """
+    if not person_history:
+        return False
+
+    obj_cx, obj_cy = _centroid(obj_bbox)
+
+    for i, entry in enumerate(person_history[-max_frames_back:]):
+        hist_cx, hist_cy = entry.get("centroid", (None, None))
+        if hist_cx is None:
+            continue
+
+        # Optional: extrapolate person position forward using velocity
+        frames_ago = max_frames_back - i
+        vx, vy = entry.get("velocity", (0.0, 0.0))
+        projected_cx = hist_cx + vx * frames_ago
+        projected_cy = hist_cy + vy * frames_ago
+
+        dist = np.hypot(obj_cx - projected_cx, obj_cy - projected_cy)
+        if dist <= max_dist_px:
+            return True
+
     return False
 
 
@@ -104,8 +152,11 @@ class TrashDetector:
     THROW_VANISH_FRAMES = 4
 
     def __init__(self):
-        self._tracked: List[_TrackedObject] = []
-        self._ghosts:  List[dict]           = []
+        self._tracked:       List[_TrackedObject] = []
+        self._ghosts:        List[dict]           = []
+        # Person centroid history for projected proximity search
+        # List of {"centroid": (x,y), "velocity": (vx,vy)} newest-last
+        self._person_history: List[dict]          = []
 
     def detect(
         self,
@@ -116,6 +167,24 @@ class TrashDetector:
         H, W = frame_shape[:2]
         persons = [d for d in all_detections if d.class_name == "person"]
         objects = [d for d in all_detections if d.class_name != "person"]
+
+        # ── Update person centroid history for projected proximity search ──
+        if persons:
+            # Average centroid across all persons in frame
+            centroids = [_centroid(p.bbox) for p in persons]
+            avg_cx = float(np.mean([c[0] for c in centroids]))
+            avg_cy = float(np.mean([c[1] for c in centroids]))
+            # Compute velocity vs last known position
+            vx, vy = 0.0, 0.0
+            if self._person_history:
+                prev_cx, prev_cy = self._person_history[-1]["centroid"]
+                vx = avg_cx - prev_cx
+                vy = avg_cy - prev_cy
+            self._person_history.append({"centroid": (avg_cx, avg_cy),
+                                          "velocity": (vx, vy)})
+            # Keep only last POSSESSION_HISTORY_FRAMES entries
+            if len(self._person_history) > POSSESSION_HISTORY_FRAMES:
+                self._person_history.pop(0)
 
         # ── Pipeline A (slow drop) ────────────────────────────────────
         updated: List[_TrackedObject] = []
@@ -184,14 +253,40 @@ class TrashDetector:
                         "conf":        tracked.det.confidence,
                     })
 
+        # New unmatched objects
         for i, obj in enumerate(objects):
             if i not in used:
                 with_person = _near_person(obj.bbox, persons)
+
+                # Fix Root Causes 2 & 3: if not near person NOW,
+                # check if it was near a person historically (bag reappearing after occlusion)
+                if not with_person and self._person_history:
+                    was_held_historically = _near_person_historical(
+                        obj.bbox, self._person_history
+                    )
+                else:
+                    was_held_historically = False
+
+                if with_person:
+                    init_state   = ObjectState.HELD
+                    init_held    = 1
+                    init_confirm = False
+                elif was_held_historically:
+                    init_state   = ObjectState.HELD
+                    init_held    = self.MIN_HELD_FRAMES
+                    init_confirm = False
+                else:
+                    init_state   = ObjectState.APPEARING
+                    init_held    = 0
+                    init_confirm = False
+
                 updated.append(_TrackedObject(
                     det         = obj,
-                    state       = ObjectState.HELD if with_person else ObjectState.APPEARING,
-                    held_frames = 1 if with_person else 0,
+                    state       = init_state,
+                    held_frames = init_held,
                     frames_seen = 1,
+                    confirmed   = init_confirm,
+                    how         = "thrown" if was_held_historically else "",
                 ))
 
         self._tracked = updated

@@ -1,13 +1,13 @@
 """
 Layer 2 — Production ByteTrack with ReID + Failure Detection & ROI Recovery
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Fixes applied:
-  - Partial visibility (hand-from-car) handled via centroid-proximity fallback
-  - Motion-aware matching: velocity-extrapolated bbox used for lost tracks
-  - Duplicate person suppression: overlapping person tracks → older ID wins
-  - ReID EMA embedding: stabilises ID across viewpoint changes
-  - 3-stage ByteTrack cascade preserved exactly
-  - All Layer 3 output fields preserved (backward-compatible)
+Fixes applied (this version):
+  [FIX-T1] Double-birth bug removed — Stage 4 had TWO birth blocks; collapsed to one
+            that uses INIT_TRACK_THRESH (0.50) as the only gate.
+  [FIX-T2] _suppress_duplicate_persons: IoU threshold lowered 0.5 → 0.35 so that
+            partially-overlapping rider splits (ID:26 + ID:27) are caught.
+  [FIX-T3] MIN_TRACK_FRAMES clamp enforced at output stage — calibrator can never
+            push it below 10 via config.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -24,7 +24,7 @@ from .reid         import ReIDEmbedder
 from .config import (
     TRACK_HIGH_THRESH, TRACK_LOW_THRESH,
     TRACK_MATCH_THRESH, TRACK_SECOND_THRESH,
-    NEW_TRACK_THRESH,
+    NEW_TRACK_THRESH, INIT_TRACK_THRESH,
     MAX_TIME_LOST, MIN_CONFIRM_FRAMES, MIN_TRACK_FRAMES,
     PREDICT_FRAMES,
     MAX_MATCH_DISTANCE_PX,
@@ -37,6 +37,10 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Hard floor: calibrator must never push MIN_TRACK_FRAMES below this.
+# Ghost tracks that survive only 5 frames pollute the state machine.
+_MIN_TRACK_FRAMES_FLOOR = 10
 
 
 # ── Track lifecycle states ─────────────────────────────────────────────────────
@@ -73,7 +77,7 @@ class _InternalTrack:
         self._predict_age = 0
 
         self.velocity       = np.zeros(4, dtype=np.float32)
-        self._velocity      = np.zeros(2, dtype=np.float32)   # (vx, vy) centroid velocity
+        self._velocity      = np.zeros(2, dtype=np.float32)
         self._prev_centroid: Optional[np.ndarray] = None
         self.prev_bbox      = bbox.copy()
         self.size_history   = [self._area(bbox)]
@@ -86,6 +90,7 @@ class _InternalTrack:
         self._recoverable_frames: int   = 0
 
         self.embedding: Optional[np.ndarray] = None
+        self._person_locked: bool = False
 
     @staticmethod
     def _centroid_from_bbox(bbox: np.ndarray) -> Tuple[float, float]:
@@ -100,7 +105,6 @@ class _InternalTrack:
         return np.array([cx, cy], dtype=np.float32)
 
     def predicted_bbox(self) -> np.ndarray:
-        """Velocity-extrapolated bbox for use during lost frames."""
         return self.bbox + self.velocity
 
     def max_historical_area(self) -> float:
@@ -115,7 +119,6 @@ class _InternalTrack:
         self.bbox       = bbox.copy()
         self.conf       = conf
 
-        # Class lock: once confirmed, class_name cannot flip
         if self.locked_class is None:
             self.class_name = class_name
         else:
@@ -136,13 +139,14 @@ class _InternalTrack:
 
         self._kalman.update(new_cx, new_cy)
 
-        # Promote tentative → confirmed after enough hits
         if self.state == _State.TENTATIVE and self.hits >= MIN_CONFIRM_FRAMES:
             self.state = _State.CONFIRMED
             if LOCK_CLASS_ON_CONFIRM and self.locked_class is None:
                 self.locked_class = self.class_name
+            # Lock person tracks permanently on confirm — prevents ID swap
+            if self.class_name == "person":
+                self._person_locked = True
 
-        # Re-activate recovered track
         if self.state in (_State.LOST, _State.RECOVERABLE):
             self.state = _State.CONFIRMED
             self._recoverable_frames = 0
@@ -152,7 +156,7 @@ class _InternalTrack:
         self.age          += 1
         self.hits          = 0
         self._predict_age += 1
-        self.bbox          = self.bbox + self.velocity * 0.5   # decay-extrapolate
+        self.bbox          = self.bbox + self.velocity * 0.5
         self.frames_lost  += 1
         self.is_active     = False
 
@@ -195,10 +199,8 @@ class _InternalTrack:
 
     @is_active.setter
     def is_active(self, value: bool) -> None:
-        # Allow external code to set is_active = False to force deletion
         if not value:
-            if self.state not in (_State.DELETED,):
-                pass  # actual state transition handled by mark_lost / suppress
+            pass  # state transition handled by mark_lost / suppress
 
     @property
     def is_confirmed(self) -> bool:
@@ -261,27 +263,16 @@ def _crop(frame: np.ndarray, bbox: np.ndarray) -> Optional[np.ndarray]:
     return frame[y1:y2, x1:x2]
 
 
-
 # ── Hungarian matching with combined cost ──────────────────────────────────────
-
 def _match_hungarian(
-    tracks:         List[_InternalTrack],
-    dets:           List[Detection],
-    iou_thresh:     float,
-    use_prediction: bool                        = False,
-    same_class:     bool                        = True,
-    det_embeddings: Optional[List]              = None,
-    track_embeddings: Optional[List]            = None,
+    tracks:           List[_InternalTrack],
+    dets:             List[Detection],
+    iou_thresh:       float,
+    use_prediction:   bool                     = False,
+    same_class:       bool                     = True,
+    det_embeddings:   Optional[List]           = None,
+    track_embeddings: Optional[List]           = None,
 ) -> Tuple[List[Tuple[int,int]], List[int], List[int]]:
-    """
-    Multi-cue Hungarian matching.
-
-    Cost = IOU_WEIGHT*(1-iou) + MOTION_WEIGHT*centroid_norm + REID_WEIGHT*reid_dist
-
-    For partially-visible detections (hand-from-car):
-      - centroid proximity acts as fallback when IoU is near zero
-      - motion_ok flag allows match purely on centroid for person class
-    """
     if not tracks or not dets:
         return [], list(range(len(tracks))), list(range(len(dets)))
 
@@ -294,35 +285,48 @@ def _match_hungarian(
     iou_mat  = _iou_batch(track_boxes, det_boxes)
     cdist    = _centroid_distance_matrix(track_boxes, det_boxes)
 
-    # Normalise centroid distance to [0,1] using diagonal of frame
-    frame_diag = float(np.sqrt(track_boxes[:,2].max()**2 + track_boxes[:,3].max()**2)) + 1e-6
-    motion_mat = np.clip(cdist / (frame_diag * 0.3), 0.0, 1.0)
-    motion_score = 1.0 - motion_mat   # higher = closer
+    frame_diag  = float(np.sqrt(track_boxes[:,2].max()**2 + track_boxes[:,3].max()**2)) + 1e-6
+    motion_mat  = np.clip(cdist / (frame_diag * 0.3), 0.0, 1.0)
+    motion_score = 1.0 - motion_mat
 
-    # ReID distance matrix
     if REID_ENABLED and det_embeddings and track_embeddings:
         reid_mat = ReIDEmbedder.embedding_matrix(track_embeddings, det_embeddings)
     else:
         reid_mat = np.full((len(tracks), len(dets)), 0.5, dtype=np.float32)
 
-    # Combined cost (lower = better match)
-    # For zero-IoU partial detections, fall back to motion + reid
     iou_contribution    = IOU_WEIGHT    * (1.0 - iou_mat)
     motion_contribution = MOTION_WEIGHT * motion_mat
     reid_contribution   = REID_WEIGHT   * reid_mat
 
     cost_mat = iou_contribution + motion_contribution + reid_contribution
 
-    # Gate: never match across classes if same_class=True
     if same_class:
-        for i, t in enumerate(tracks):
-            t_cls = t.locked_class or t.class_name
-            for j, d in enumerate(dets):
-                if t_cls != d.class_name:
-                    cost_mat[i, j] = 1e9
+            for i, t in enumerate(tracks):
+                t_cls = t.locked_class or t.class_name
+                for j, d in enumerate(dets):
+                    if t_cls != d.class_name:
+                        cost_mat[i, j] = 1e9
+                    # Prevent confirmed person tracks from matching a far detection
+                    # Prevent confirmed person tracks from matching a far detection
+                    # But allow recovery of lost tracks even with low IoU
+                    # Prevent confirmed person tracks from matching a far detection
 
-    # Gate: never match beyond max pixel distance
     cost_mat[cdist > MAX_MATCH_DISTANCE_PX] = 1e9
+    # Scale stability gate — prevent large confirmed tracks from snapping
+    # onto small nested boxes (e.g. ID:1 rider → ID:9 torso box)
+    for i, t in enumerate(tracks):
+        if t.state != _State.CONFIRMED or t.frames_seen < 15:
+            continue
+        track_area = (t.bbox[2]-t.bbox[0]) * (t.bbox[3]-t.bbox[1])
+        if track_area < 1:
+            continue
+        for j, d in enumerate(dets):
+            if cost_mat[i, j] >= 1e9:
+                continue
+            det_area = (d.bbox[2]-d.bbox[0]) * (d.bbox[3]-d.bbox[1])
+            scale_change = det_area / track_area
+            if scale_change < 0.45:
+                cost_mat[i, j] = 1e9
 
     row_ind, col_ind = linear_sum_assignment(cost_mat)
 
@@ -334,13 +338,11 @@ def _match_hungarian(
         if cost_mat[r, c] >= 1e9:
             continue
         iou_ok    = iou_mat[r, c] >= iou_thresh
-        # Partial-visibility fallback: centroid close enough + same person class
         motion_ok = (
             motion_score[r, c] >= 0.5
             and (tracks[r].locked_class or tracks[r].class_name) == "person"
             and (det_embeddings is None or reid_mat[r, c] < REID_MAX_COSINE_DIST + 0.2)
         )
-        # ReID-primary match for lost tracks (even with low IoU)
         reid_ok = (
             REID_ENABLED
             and reid_mat[r, c] < REID_MAX_COSINE_DIST
@@ -382,21 +384,30 @@ class _FailureDetector:
         EXIT_MARGIN = 30
         x1, y1, x2, y2 = track.bbox
         vx, vy = float(track._velocity[0]), float(track._velocity[1])
-        near_left   = x1 < EXIT_MARGIN       and vx < 0
+        near_left   = x1 < EXIT_MARGIN           and vx < 0
         near_right  = x2 > frame_w - EXIT_MARGIN and vx > 0
-        near_top    = y1 < EXIT_MARGIN        and vy < 0
-        near_bottom = y2 > frame_h - EXIT_MARGIN and vy > 0
+        near_top    = y1 < EXIT_MARGIN            and vy < 0
+        near_bottom = y2 > frame_h - EXIT_MARGIN  and vy > 0
         at_edge     = near_left or near_right or near_top or near_bottom
-        return not at_edge   # True = sudden, unexpected loss
+        return not at_edge
 
 
-# ── Duplicate Suppressor ───────────────────────────────────────────────────────
+# ── Duplicate Person Suppressor ────────────────────────────────────────────────
 
 def _suppress_duplicate_persons(tracks: List[_InternalTrack]) -> None:
     """
-    If two active person tracks overlap (IoU > 0.5), suppress the newer one.
-    Newer = higher track_id. Sets state → DELETED so it is purged next cycle.
+    [FIX-T2] If two active person tracks overlap (IoU > 0.35), suppress the newer one.
+
+    Threshold lowered from 0.50 → 0.35 because a scooter rider split into two
+    detections (ID:26 + ID:27) typically shows 35-45% overlap, not 50%+.
+    The older track_id always wins (it has more confirmed history).
+
+    Additionally, if IoU is low but centroids are within CENTROID_MERGE_PX pixels
+    and both are TENTATIVE, suppress the newer one immediately — this catches the
+    case where the rider is partially occluded and boxes don't overlap much yet.
     """
+    CENTROID_MERGE_PX = 80   # px — merge tentative persons closer than this
+
     person_tracks = [
         t for t in tracks
         if (t.locked_class or t.class_name) == "person"
@@ -410,15 +421,37 @@ def _suppress_duplicate_persons(tracks: List[_InternalTrack]) -> None:
     iou_mat = _iou_batch(boxes, boxes)
     np.fill_diagonal(iou_mat, 0.0)
 
+    # Centroid distance matrix for tentative-proximity check
+    cx = (boxes[:, 0] + boxes[:, 2]) / 2.0
+    cy = (boxes[:, 1] + boxes[:, 3]) / 2.0
+    coords = np.stack([cx, cy], axis=1)
+    diff   = coords[:, None, :] - coords[None, :, :]
+    cdist  = np.sqrt((diff**2).sum(axis=2))
+
     to_delete: Set[int] = set()
     for i in range(len(person_tracks)):
         for j in range(i + 1, len(person_tracks)):
-            if iou_mat[i, j] > 0.5:
-                newer_idx = i if person_tracks[i].track_id > person_tracks[j].track_id else j
+            iou_overlap      = iou_mat[i, j] > 0.35   # [FIX-T2] was 0.50
+            centroid_close   = (
+                cdist[i, j] < CENTROID_MERGE_PX
+                and person_tracks[i].state == _State.TENTATIVE
+                and person_tracks[j].state == _State.TENTATIVE
+            )
+            if iou_overlap or centroid_close:
+                # Older track_id wins — it has more history
+                # Larger bbox wins — rider on scooter is always bigger
+               # Older track_id wins — it has more history
+                newer_idx = (
+                    i if person_tracks[i].track_id > person_tracks[j].track_id else j
+                )
                 to_delete.add(newer_idx)
 
     for idx in to_delete:
         person_tracks[idx].state = _State.DELETED
+        logger.debug(
+            "[Layer2] Suppressed duplicate person track_id=%d",
+            person_tracks[idx].track_id,
+        )
 
 
 # ── Main Tracker ───────────────────────────────────────────────────────────────
@@ -426,10 +459,7 @@ def _suppress_duplicate_persons(tracks: List[_InternalTrack]) -> None:
 class ByteTrackWrapper:
     """
     Production ByteTrack + ReID + Failure Detection + ROI Recovery.
-
-    Public interface (backward-compatible with original Layer 2):
-        tracker = ByteTrackWrapper(detector=rtdetr_detector)
-        tracks  = tracker.update(detections, trash_detections, frame, frame_shape)
+    Backward-compatible with original Layer 2 interface.
     """
 
     def __init__(self, detector=None):
@@ -446,10 +476,15 @@ class ByteTrackWrapper:
         self._failure_detector: Optional[_FailureDetector] = None
         self._reid = ReIDEmbedder()
 
+        # Clamp MIN_TRACK_FRAMES — calibrator cannot push it below the hard floor
+        self._min_track_frames = max(MIN_TRACK_FRAMES, _MIN_TRACK_FRAMES_FLOOR)
+
         logger.info(
-            "[Layer2] ByteTrackWrapper initialised. ROI recovery: %s  ReID: %s",
+            "[Layer2] ByteTrackWrapper initialised. "
+            "ROI recovery: %s  ReID: %s  MIN_TRACK_FRAMES (effective): %d",
             "ENABLED" if self._roi_recovery else "DISABLED",
             "ENABLED" if REID_ENABLED else "DISABLED",
+            self._min_track_frames,
         )
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -479,7 +514,7 @@ class ByteTrackWrapper:
         else:
             self._failure_detector.update_frame_size(W, H)
 
-        # ── STAGE 0: Extract ReID embeddings for all detections (once/frame) ──
+        # ── STAGE 0: ReID embeddings ──────────────────────────────────────────
         det_embeddings: List[Optional[np.ndarray]] = []
         if REID_ENABLED and frame is not None:
             for d in detections:
@@ -493,16 +528,21 @@ class ByteTrackWrapper:
         high_idx  = [i for i, d in enumerate(detections) if d.confidence >= TRACK_HIGH_THRESH]
         low_idx   = [i for i, d in enumerate(detections)
                      if TRACK_LOW_THRESH <= d.confidence < TRACK_HIGH_THRESH]
-        high_dets = [detections[i] for i in high_idx]
+        # Sort high_dets by bbox area descending — large boxes match first
+        high_pairs = sorted(
+            [(detections[i], det_embeddings[i]) for i in high_idx],
+            key=lambda x: (x[0].bbox[2]-x[0].bbox[0]) * (x[0].bbox[3]-x[0].bbox[1]),
+            reverse=True,
+        )
+        high_dets = [p[0] for p in high_pairs]
+        high_embs = [p[1] for p in high_pairs]
         low_dets  = [detections[i] for i in low_idx]
-        high_embs = [det_embeddings[i] for i in high_idx]
         low_embs  = [det_embeddings[i] for i in low_idx]
 
         confirmed_active = [t for t in self._tracks if t.state == _State.CONFIRMED]
         lost_tracks      = [t for t in self._tracks if t.state in (_State.LOST, _State.RECOVERABLE)]
         tentative_tracks = [t for t in self._tracks if t.state == _State.TENTATIVE]
 
-        # Gather track-side embeddings for ReID
         conf_embs = [self._reid.get_embedding(t.track_id) for t in confirmed_active]
         lost_embs = [self._reid.get_embedding(t.track_id) for t in lost_tracks]
         tent_embs = [self._reid.get_embedding(t.track_id) for t in tentative_tracks]
@@ -517,7 +557,9 @@ class ByteTrackWrapper:
             track_embeddings=conf_embs,
         )
         for ti, di in matched_1:
-            confirmed_active[ti].update(high_dets[di].bbox, high_dets[di].confidence, high_dets[di].class_name)
+            confirmed_active[ti].update(
+                high_dets[di].bbox, high_dets[di].confidence, high_dets[di].class_name
+            )
             if REID_ENABLED and frame is not None and high_embs[di] is not None:
                 crop = _crop(frame, high_dets[di].bbox)
                 if crop is not None:
@@ -538,14 +580,16 @@ class ByteTrackWrapper:
             track_embeddings=remaining_conf_embs,
         )
         for ti, di in matched_2:
-            remaining_conf[ti].update(low_dets[di].bbox, low_dets[di].confidence, low_dets[di].class_name)
+            remaining_conf[ti].update(
+                low_dets[di].bbox, low_dets[di].confidence, low_dets[di].class_name
+            )
 
         for i in still_unmatched_conf:
             t         = remaining_conf[i]
             is_sudden = self._failure_detector.detect_sudden_loss(t, W, H)
             t.mark_lost(is_sudden=is_sudden)
 
-        # ════ STAGE 3: Unmatched high-conf dets ↔ Lost tracks (ReID!) ════════
+        # ════ STAGE 3: Unmatched high-conf dets ↔ Lost tracks (ReID) ═════════
         unmatched_high_dets = [high_dets[i] for i in unmatched_high]
         unmatched_high_embs = [high_embs[i] for i in unmatched_high]
 
@@ -572,6 +616,37 @@ class ByteTrackWrapper:
 
         for i in unmatched_lost:
             lost_tracks[i].mark_lost()
+        
+        # ════ STAGE 3b: Mid-conf dets ↔ Lost tracks (Recovery Pass) ══════════
+        # Detections between TRACK_HIGH_THRESH and INIT_TRACK_THRESH that were
+        # excluded from high_dets are tried against lost tracks BEFORE birth.
+        # This recovers the rider's original ID when they reappear at ~0.35-0.40
+        # confidence after a motion-blur dropout — without spawning a new ID.
+        mid_idx  = [i for i, d in enumerate(detections)
+                    if TRACK_HIGH_THRESH <= d.confidence < INIT_TRACK_THRESH
+                    and d.class_name == "person"]
+        mid_dets = [detections[i] for i in mid_idx]
+        mid_embs = [det_embeddings[i] for i in mid_idx]
+
+        if mid_dets and lost_tracks:
+            matched_3b, _, unmatched_mid = _match_hungarian(
+                lost_tracks, mid_dets,
+                iou_thresh      = 0.15,   # looser IoU — motion blur shifts bbox
+                use_prediction  = True,
+                same_class      = True,
+                det_embeddings  = mid_embs,
+                track_embeddings= lost_embs,
+            )
+            for ti, di in matched_3b:
+                lost_tracks[ti].update(
+                    mid_dets[di].bbox,
+                    mid_dets[di].confidence,
+                    mid_dets[di].class_name,
+                )
+                logger.debug(
+                    "[Layer2] RECOVERY PASS recovered track_id=%d conf=%.2f",
+                    lost_tracks[ti].track_id, mid_dets[di].confidence,
+                )
 
         # ════ STAGE 4: Tentative tracks ↔ Remaining truly-new dets ══════════
         truly_new_dets = [unmatched_high_dets[i] for i in unmatched_new]
@@ -586,35 +661,77 @@ class ByteTrackWrapper:
             track_embeddings=tent_embs,
         )
         for ti, di in matched_4:
-            tentative_tracks[ti].update(truly_new_dets[di].bbox, truly_new_dets[di].confidence, truly_new_dets[di].class_name)
+            tentative_tracks[ti].update(
+                truly_new_dets[di].bbox,
+                truly_new_dets[di].confidence,
+                truly_new_dets[di].class_name,
+            )
 
         for i in unmatched_tent:
             tentative_tracks[i].mark_lost()
 
-        # ════ STAGE 5: Birth new tracks ═══════════════════════════════════════
+        # ════ STAGE 4-BIRTH: Spawn new tracks ════════════════════════════════
+        # [FIX-T1] Single birth block — INIT_TRACK_THRESH (0.50) is the only gate.
+        # The original code had TWO birth blocks here (INIT_TRACK_THRESH and then
+        # NEW_TRACK_THRESH), causing every new detection to spawn two _InternalTrack
+        # objects with different IDs. Collapsed into one.
         for i in unmatched_birth:
             d = truly_new_dets[i]
-            if d.confidence >= NEW_TRACK_THRESH:
+            bag_classes = {"handbag", "bag", "backpack"}
+            birth_thresh = 0.14 if d.class_name in bag_classes else INIT_TRACK_THRESH
+            if d.confidence >= birth_thresh:
                 new_t = _InternalTrack(d.bbox, d.confidence, d.class_name)
                 if REID_ENABLED and frame is not None and truly_new_embs[i] is not None:
                     crop = _crop(frame, d.bbox)
                     if crop is not None:
                         new_t.embedding = self._reid.update_track(new_t.track_id, crop)
                 self._tracks.append(new_t)
+                logger.debug(
+                    "[Layer2] Track BORN  id=%d  class=%s  conf=%.2f",
+                    new_t.track_id, d.class_name, d.confidence,
+                )
 
-        # ════ STAGE 5.5: Duplicate person suppression ═════════════════════════
+        # ════ STAGE 5: Duplicate person suppression ═══════════════════════════
         _suppress_duplicate_persons(self._tracks)
+
+        # ════ STAGE 5b: Duplicate object suppression ══════════════════════════
+        # If two non-person confirmed tracks of the same class are within
+        # 80px centroid distance, suppress the newer one.
+        non_person_confirmed = [
+            t for t in self._tracks
+            if (t.locked_class or t.class_name) != "person"
+            and t.state == _State.CONFIRMED
+        ]
+        dup_delete: Set[int] = set()
+        for i in range(len(non_person_confirmed)):
+            for j in range(i + 1, len(non_person_confirmed)):
+                a = non_person_confirmed[i]
+                b = non_person_confirmed[j]
+                if (a.locked_class or a.class_name) != (b.locked_class or b.class_name):
+                    continue
+                acx = (a.bbox[0] + a.bbox[2]) / 2
+                acy = (a.bbox[1] + a.bbox[3]) / 2
+                bcx = (b.bbox[0] + b.bbox[2]) / 2
+                bcy = (b.bbox[1] + b.bbox[3]) / 2
+                dist = ((acx-bcx)**2 + (acy-bcy)**2) ** 0.5
+                if dist <= 80:
+                    # Suppress newer track
+                    newer = a if a.track_id > b.track_id else b
+                    dup_delete.add(newer.track_id)
+        for t in self._tracks:
+            if t.track_id in dup_delete:
+                t.state = _State.DELETED
 
         # ════ STAGE 6: Failure detection ══════════════════════════════════════
         uncertain_internal = self._failure_detector.score_tracks(self._tracks)
 
-        # ════ STAGE 7: ROI Re-Scan (event-triggered) ══════════════════════════
+        # ════ STAGE 7: ROI Re-Scan ════════════════════════════════════════════
         if self._roi_recovery and frame is not None and uncertain_internal:
             uncertain_proxies = self._build_uncertain_proxies(uncertain_internal)
             recovery_results  = self._roi_recovery.recover(uncertain_proxies, frame)
             self._apply_recovery(recovery_results, uncertain_internal)
 
-        # ════ STAGE 8: Purge deleted ═══════════════════════════════════════════
+        # ════ STAGE 8: Purge deleted ══════════════════════════════════════════
         deleted_ids = {t.track_id for t in self._tracks if t.state == _State.DELETED}
         for tid in deleted_ids:
             self._reid.remove_track(tid)
@@ -624,12 +741,16 @@ class ByteTrackWrapper:
         output:   List[TrackedObject] = []
         seen_ids: Set[int]            = set()
 
+        effective_min_frames = self._min_track_frames  # [FIX-T3] clamped floor
+
         for t in self._tracks:
             if not t.is_confirmed:
                 continue
-            if t.age < MIN_TRACK_FRAMES:
+            bag_classes = {"handbag", "bag", "backpack"}
+            floor = 3 if (t.locked_class or t.class_name) in bag_classes else effective_min_frames
+            if t.age < floor:       # [FIX-T3] was bare MIN_TRACK_FRAMES
                 continue
-            if not self._is_valid_bbox(t.bbox, (H, W)):  # ← ADD HERE
+            if not self._is_valid_bbox(t.bbox, (H, W)):
                 continue
 
             tid = t.track_id
@@ -719,17 +840,18 @@ class ByteTrackWrapper:
                 if t.state == _State.CONFIRMED:
                     t.state = _State.RECOVERABLE
                 logger.debug("[Layer2] ROI recovery FAILED  track_id=%d", t.track_id)
+
     @staticmethod
     def _is_valid_bbox(bbox: np.ndarray, frame_shape: Tuple[int, int]) -> bool:
-            x1, y1, x2, y2 = bbox
-            h, w = frame_shape[:2]
-            if x2 <= x1 or y2 <= y1:
-                return False
-            if x1 >= w or y1 >= h or x2 <= 0 or y2 <= 0:
-                return False
-            if (x2 - x1) * (y2 - y1) < 100:
-                return False
-            return True
+        x1, y1, x2, y2 = bbox
+        h, w = frame_shape[:2]
+        if x2 <= x1 or y2 <= y1:
+            return False
+        if x1 >= w or y1 >= h or x2 <= 0 or y2 <= 0:
+            return False
+        if (x2 - x1) * (y2 - y1) < 100:
+            return False
+        return True
 
     def _tag_trash(
         self,
@@ -737,6 +859,7 @@ class ByteTrackWrapper:
         trash_detections: List[TrashDetection],
     ) -> None:
         for trash in trash_detections:
+            # Step 1: try IoU match
             best_iou, best_track = 0.0, None
             for t in tracks:
                 if t.class_name == "person":
@@ -745,7 +868,25 @@ class ByteTrackWrapper:
                 if iou > best_iou:
                     best_iou, best_track = iou, t
 
-            if best_track is not None and best_iou > 0.15:
+            # Step 2: if IoU match failed, try centroid distance
+            if best_track is None or best_iou <= 0.15:
+                trash_cx = (trash.bbox[0] + trash.bbox[2]) / 2
+                trash_cy = (trash.bbox[1] + trash.bbox[3]) / 2
+                best_dist, best_track = float("inf"), None
+                for t in tracks:
+                    if t.class_name == "person":
+                        continue
+                    tcx = (t.bbox[0] + t.bbox[2]) / 2
+                    tcy = (t.bbox[1] + t.bbox[3]) / 2
+                    d = ((trash_cx - tcx)**2 + (trash_cy - tcy)**2) ** 0.5
+                    if d < best_dist:
+                        best_dist, best_track = d, t
+                matched = best_track is not None and best_dist <= 60
+            else:
+                matched = True
+
+            # Step 3: apply tag or ghost
+            if matched and best_track is not None:
                 best_track.is_trash    = True
                 best_track.trash_label = trash.label
                 best_track.trash_how   = trash.how

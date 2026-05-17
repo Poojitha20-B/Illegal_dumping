@@ -53,68 +53,7 @@ import numpy as np
 from Layer2.track_state import TrackedObject
 from Layer2.bin_tracker import TrackedBin
 from Layer4.dumping_inference import DumpingEvent
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Config
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Ghost filter
-GHOST_MIN_FRAMES        = 15
-GHOST_MIN_MOVEMENT      = 20.0
-
-# Motion coupling (possession detection)
-COUPLING_WINDOW         = 8
-COUPLING_COS_THRESH     = 0.60
-COUPLING_SPEED_RATIO    = 3.0
-MIN_COUPLING_FRAMES     = 5     # FIX 2: lowered from 6 → 5
-MIN_MOVE_PX_FOR_COUPLING = 3.0
-
-# Release detection (L5 independent)
-DIVERGE_COS_THRESH      = 0.20
-DIVERGE_DIST_GROW       = True
-DIVERGE_CONFIRM_FRAMES  = 3
-
-# Object rest confirmation
-REST_VEL_PX             = 4.0
-REST_CONFIRM_FRAMES     = 5
-REST_MAX_WAIT           = 60
-
-# Trajectory intent
-TRAJ_WINDOW             = 25
-TRAJ_PERSON_WEIGHT      = 0.55
-TRAJ_OBJECT_WEIGHT      = 0.45
-TRAJ_LEGAL_THRESH       = 0.60
-
-# Bin radius
-BIN_LEGAL_RADIUS_PX     = 210
-
-# Confidence scoring weights
-CONF_COUPLING_W         = 0.30
-CONF_DIVERGE_W          = 0.25
-CONF_REST_W             = 0.20
-CONF_BIN_PROX_W         = 0.25
-MIN_CONFIDENCE_TO_ACT   = 0.45
-
-# Case management
-MAX_CASE_AGE_FRAMES     = 500
-
-# Off-screen release
-OFFSCREEN_RELEASE_FRAMES = 8
-
-# ── FIX 7: Bin-entry detection thresholds ─────────────────────────────────────
-# Person must have been approaching the bin with at least this score
-# for the "object entered bin" override to fire.
-BIN_APPROACH_THRESH         = 0.35   # lowered intentionally — trajectory to bin
-                                      # doesn't need to be perfect for a throw
-# If the person was within this px of the bin at the time the object
-# disappeared, we treat that as corroboration and lower approach threshold.
-BIN_PERSON_RADIUS_PX        = 350    # px — "person was near bin when object vanished"
-BIN_APPROACH_CORROBORATED   = 0.20   # approach threshold when person was near bin
-# Minimum coupling strength (peak cosine) for bin-entry override to apply.
-# Prevents weak/accidental coupling from triggering the override.
-BIN_ENTRY_MIN_PEAK_COS      = 0.70
-# ──────────────────────────────────────────────────────────────────────────────
+import Layer5.config as cfg
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -175,6 +114,78 @@ def _nearest_bin(
             best_d, best_id = d, b.bin_id
     return best_d, best_id
 
+def _point_in_bbox(
+    pt:   Tuple[float, float],
+    bbox: np.ndarray,
+) -> bool:
+    """Phase 1: Check if point is inside bbox."""
+    return (bbox[0] <= pt[0] <= bbox[2] and
+            bbox[1] <= pt[1] <= bbox[3])
+
+
+def _iot_score(
+    trash_bbox: np.ndarray,
+    bin_bbox:   np.ndarray,
+) -> float:
+    """Phase 2: Intersection-over-Trash score."""
+    ix1 = max(trash_bbox[0], bin_bbox[0])
+    iy1 = max(trash_bbox[1], bin_bbox[1])
+    ix2 = min(trash_bbox[2], bin_bbox[2])
+    iy2 = min(trash_bbox[3], bin_bbox[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    trash_area = (trash_bbox[2]-trash_bbox[0]) * (trash_bbox[3]-trash_bbox[1])
+    return inter / trash_area if trash_area > 0 else 0.0
+
+
+def _perimeter_dist(
+    pt:       Tuple[float, float],
+    bin_bbox: np.ndarray,
+) -> float:
+    """Phase 3: Distance from point to nearest edge of bbox."""
+    cx, cy = pt
+    x1, y1, x2, y2 = bin_bbox
+    dx = max(x1 - cx, 0.0, cx - x2)
+    dy = max(y1 - cy, 0.0, cy - y2)
+    return math.hypot(dx, dy)
+
+
+def _best_bin_hierarchical(
+    trash_bbox: np.ndarray,
+    pt:         Tuple[float, float],
+    bins:       List[TrackedBin],
+) -> Tuple[float, Optional[TrackedBin]]:
+    """
+    Hierarchical bin assignment:
+      Phase 1 — centroid inside bin bbox (containment)
+      Phase 2 — highest IoT score
+      Phase 3 — nearest perimeter distance
+    """
+    if not bins:
+        return float("inf"), None
+
+    # Phase 1: containment
+    for tb in bins:
+        if _point_in_bbox(pt, tb.bbox):
+            return 0.0, tb
+
+    # Phase 2: IoT overlap
+    best_iot, best_tb = 0.0, None
+    for tb in bins:
+        score = _iot_score(trash_bbox, tb.bbox)
+        if score > best_iot:
+            best_iot, best_tb = score, tb
+    if best_tb is not None and best_iot > 0:
+        # Return a pseudo-distance inversely proportional to overlap
+        return (1.0 - best_iot) * 100, best_tb
+
+    # Phase 3: perimeter distance fallback
+    best_d, best_tb = float("inf"), None
+    for tb in bins:
+        d = _perimeter_dist(pt, tb.bbox)
+        if d < best_d:
+            best_d, best_tb = d, tb
+    return best_d, best_tb
+
 def _parse_pair_id(pair_id: str) -> Tuple[int, int]:
     parts = pair_id.split("_")
     return int(parts[1]), int(parts[3])
@@ -198,7 +209,7 @@ class _PersonHistory:
     frames:   int   = 0
     movement: float = 0.0
     last_pos: Optional[Tuple[float, float]] = None
-    trail:    deque = field(default_factory=lambda: deque(maxlen=TRAJ_WINDOW))
+    trail:    deque = field(default_factory=lambda: deque(maxlen=cfg.TRAJ_WINDOW))
 
     def update(self, pos: Tuple[float, float]) -> None:
         self.frames += 1
@@ -209,7 +220,7 @@ class _PersonHistory:
 
     @property
     def is_ghost(self) -> bool:
-        return self.frames < GHOST_MIN_FRAMES or self.movement < GHOST_MIN_MOVEMENT
+        return self.frames < cfg.GHOST_MIN_FRAMES or self.movement < cfg.GHOST_MIN_MOVEMENT
 
     def velocity(self) -> Tuple[float, float]:
         return _vel(self.trail, n=4)
@@ -220,7 +231,8 @@ class _PersonHistory:
         if not bins or len(self.trail) < 4:
             return 0.0, None
         trail    = list(self.trail)
-        best_bin = min(bins, key=lambda b: _dist(trail[0], _bottom_center(b.bbox)))
+        # Pick the bin the person is moving TOWARD (closest to trail END, not start)
+        best_bin = min(bins, key=lambda b: _dist(trail[-1], _bottom_center(b.bbox)))
         bin_pos  = _bottom_center(best_bin.bbox)
         converge = sum(
             1 for i in range(1, len(trail))
@@ -331,7 +343,6 @@ class DumpingAgent:
             if self._is_ghost(case, ph):
                 info = (f"frames={ph.frames} move={ph.movement:.0f}px "
                         f"coupling={case.coupling_frames}f") if ph else "unseen"
-                self.frame_signals[pair_id] = f"GHOST(P{case.person_id}) {info}"
                 continue
 
             obj = self._find_obj(case.trash_id, tracked_objs)
@@ -345,7 +356,7 @@ class DumpingAgent:
             else:
                 case.obj_missing_frames += 1
                 if (case.state == _State.POSSESSED
-                        and case.obj_missing_frames >= OFFSCREEN_RELEASE_FRAMES):
+                        and case.obj_missing_frames >= cfg.OFFSCREEN_RELEASE_FRAMES):
                     case.state = _State.RELEASED
                     case.post_release_frames = 0
                     case.rest_via_timeout = True
@@ -408,6 +419,24 @@ class DumpingAgent:
                         closest_d = d
                         best_area = area
 
+            # Trajectory lookback: if object just appeared, check who was
+            # historically near its position rather than who is nearest now
+            obj_pos = _centroid(obj.bbox)
+
+            # Step 1: proximity lookback (held/slow drop)
+            historical_pid = self._nearest_historical_person(
+                obj_pos, radius_px=160.0
+            )
+
+            # Step 2: ballistic projection (far throw)
+            if historical_pid is None:
+                historical_pid = self._nearest_person_ballistic(
+                    obj_pos, radius_px=400.0
+                )
+
+            if historical_pid is not None and historical_pid != closest_p.track_id:
+                closest_p = type('_P', (), {'track_id': historical_pid})()
+
             pair_id = f"person_{closest_p.track_id}_trash_{obj.track_id}"
             case    = self._get_or_create(
                 pair_id, closest_p.track_id, obj.track_id, frame_idx
@@ -429,7 +458,7 @@ class DumpingAgent:
             o_vel   = _vel(case.obj_trail, n=3)
             o_speed = _speed(o_vel)
 
-            if p_speed < MIN_MOVE_PX_FOR_COUPLING and o_speed < MIN_MOVE_PX_FOR_COUPLING:
+            if p_speed < cfg.MIN_MOVE_PX_FOR_COUPLING and o_speed < cfg.MIN_MOVE_PX_FOR_COUPLING:
                 if closest_d < 100:
                     case.coupling_frames += 1
                 continue
@@ -438,18 +467,18 @@ class DumpingAgent:
 
             if p_speed > 1e-3 and o_speed > 1e-3:
                 ratio = max(p_speed, o_speed) / min(p_speed, o_speed)
-                if ratio > COUPLING_SPEED_RATIO:
+                if ratio > cfg.COUPLING_SPEED_RATIO:
                     cos_sim *= 0.3
 
             if case.state in (_State.WATCHING, _State.POSSESSED):
-                if cos_sim >= COUPLING_COS_THRESH:
+                if cos_sim >= cfg.COUPLING_COS_THRESH:
                     case.coupling_frames += 1
                     case.coupling_scores.append(cos_sim)
                     case.peak_coupling = max(case.peak_coupling, cos_sim)
                     case.diverge_frames = 0
 
                     if (case.state == _State.WATCHING
-                            and case.coupling_frames >= MIN_COUPLING_FRAMES):
+                            and case.coupling_frames >= cfg.MIN_COUPLING_FRAMES):
                         case.state = _State.POSSESSED
                         case.log(
                             f"possessed confirmed coupling={case.coupling_frames}f "
@@ -461,7 +490,7 @@ class DumpingAgent:
                         case.diverge_scores.append(cos_sim)
                         case.release_clarity = cos_sim
 
-                        if case.diverge_frames >= DIVERGE_CONFIRM_FRAMES:
+                        if case.diverge_frames >= cfg.DIVERGE_CONFIRM_FRAMES:
                             case.state = _State.RELEASED
                             case.post_release_frames = 0
                             case.log(
@@ -481,7 +510,7 @@ class DumpingAgent:
 
         if case.state == _State.WATCHING:
             if case.stored_l4_event and case.stored_l4_event.event != "pending":
-                if case.coupling_frames < MIN_COUPLING_FRAMES:
+                if case.coupling_frames < cfg.MIN_COUPLING_FRAMES:
                     case.log(f"l4_fired_no_coupling coupling={case.coupling_frames}f")
                 case.state = _State.RELEASED
                 case.post_release_frames = 0
@@ -502,19 +531,19 @@ class DumpingAgent:
                 o_vel  = _vel(case.obj_trail, n=3)
                 o_spd  = _speed(o_vel)
 
-                if o_spd < REST_VEL_PX:
+                if o_spd < cfg.REST_VEL_PX:
                     case.rest_frames += 1
                 else:
                     case.rest_frames = 0
 
-                if case.rest_frames >= REST_CONFIRM_FRAMES:
+                if case.rest_frames >= cfg.REST_CONFIRM_FRAMES:
                     case.state = _State.RESTING
                     case.log(f"object_at_rest vel={o_spd:.1f}px")
 
-            if case.post_release_frames >= REST_MAX_WAIT:
+            if case.post_release_frames >= cfg.REST_MAX_WAIT:
                 case.state = _State.RESTING
                 case.rest_via_timeout = True
-                case.log(f"rest_timeout after {REST_MAX_WAIT}f")
+                case.log(f"rest_timeout after {cfg.REST_MAX_WAIT}f")
 
             return None
 
@@ -563,8 +592,8 @@ class DumpingAgent:
 
         # Condition 3: strong coupling (object was genuinely being carried)
         strong_possession = (
-            case.coupling_frames >= MIN_COUPLING_FRAMES
-            and case.peak_coupling >= BIN_ENTRY_MIN_PEAK_COS
+            case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
+            and case.peak_coupling >= cfg.BIN_ENTRY_MIN_PEAK_COS
         )
         if not strong_possession:
             return False, ""
@@ -579,11 +608,11 @@ class DumpingAgent:
         person_bin_dist = float("inf")
         if ph:
             person_bin_dist = ph.nearest_bin_dist(tracked_bins)
-            person_near_bin = person_bin_dist <= BIN_PERSON_RADIUS_PX
+            person_near_bin = person_bin_dist <= cfg.BIN_PERSON_RADIUS_PX
 
         # Determine effective approach threshold
         effective_thresh = (
-            BIN_APPROACH_CORROBORATED if person_near_bin else BIN_APPROACH_THRESH
+            cfg.BIN_APPROACH_CORROBORATED if person_near_bin else cfg.BIN_APPROACH_THRESH
         )
 
         if person_approach < effective_thresh:
@@ -616,8 +645,8 @@ class DumpingAgent:
         l4_verdict   = ev.event if ev else None
         bins_present = len(tracked_bins) > 0
 
-        l5_confirmed_possession = case.coupling_frames >= MIN_COUPLING_FRAMES
-        l5_confirmed_release    = (case.diverge_frames >= DIVERGE_CONFIRM_FRAMES
+        l5_confirmed_possession = case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
+        l5_confirmed_release    = (case.diverge_frames >= cfg.DIVERGE_CONFIRM_FRAMES
                                    or case.rest_via_timeout
                                    or case.state == _State.RESTING)
 
@@ -632,8 +661,19 @@ class DumpingAgent:
         else:
             is_violation = False
 
-        reasons = [ev.reason if ev else "l5_independent_detection"]
-
+        # Strip L4 bin label — L5 will report the correct bin from its own spatial check
+        import re
+        if ev:
+            if ph and ph.last_pos and tracked_bins:
+                ref_bbox = np.array([ph.last_pos[0]-5, ph.last_pos[1]-5,
+                                     ph.last_pos[0]+5, ph.last_pos[1]+5])
+                _, correct_bin_obj = _best_bin_hierarchical(ref_bbox, ph.last_pos, tracked_bins)
+                correct_bin_id = correct_bin_obj.bin_id if correct_bin_obj else None
+                reasons = [re.sub(r'bin#\d+', f'bin#{correct_bin_id}', ev.reason)]
+            else:
+                reasons = [ev.reason]
+        else:
+            reasons = ["l5_independent_detection"]
         # ── FIX 7: Bin-entry override (runs BEFORE other spatial checks) ──────
         # This specifically handles the case where L4 said VIOLATION because
         # the object's final tracked position was far from the bin — but the
@@ -650,9 +690,17 @@ class DumpingAgent:
         # Only run if bin-entry override did NOT already flip to legal.
         # (If it did, we trust the bin-entry logic over raw distance.)
         final_pos = case.final_obj_pos
-        if final_pos and tracked_bins and not bin_entry_legal:
-            best_d, best_bin_id = _nearest_bin(final_pos, tracked_bins)
-            if best_d <= BIN_LEGAL_RADIUS_PX:
+        # Use person's last position instead of trash's last position
+        # — when bag enters bin it disappears near person's hand, not near bin center
+        ref_pos = ph.last_pos if (ph and ph.last_pos) else final_pos
+        if ref_pos and tracked_bins and not bin_entry_legal:
+            # Use hierarchical containment check with a dummy trash bbox
+            # centered on ref_pos when actual trash bbox is unavailable
+            ref_bbox = np.array([ref_pos[0]-5, ref_pos[1]-5,
+                                 ref_pos[0]+5, ref_pos[1]+5])
+            best_d, best_bin_obj = _best_bin_hierarchical(ref_bbox, ref_pos, tracked_bins)
+            best_bin_id = best_bin_obj.bin_id if best_bin_obj else None
+            if best_d <= cfg.BIN_LEGAL_RADIUS_PX:
                 is_violation = False
                 reasons.append(f"L5_bin_near dist={best_d:.0f}px bin#{best_bin_id}")
                 case.log(f"bin_override {best_d:.0f}px")
@@ -674,12 +722,12 @@ class DumpingAgent:
             obj_approach = converge / max(min(10, len(trail)-1), 1)
 
         intent_score = (
-            TRAJ_PERSON_WEIGHT * person_approach +
-            TRAJ_OBJECT_WEIGHT * obj_approach
+            cfg.TRAJ_PERSON_WEIGHT * person_approach +
+            cfg.TRAJ_OBJECT_WEIGHT * obj_approach
         )
 
         # FIX 3: Only allow intent to override to LEGAL when bins exist
-        if bins_present and intent_score >= TRAJ_LEGAL_THRESH and is_violation:
+        if bins_present and intent_score >= cfg.TRAJ_LEGAL_THRESH and is_violation:
             is_violation = False
             reasons.append(
                 f"L5_traj_intent person={person_approach:.2f} "
@@ -702,35 +750,41 @@ class DumpingAgent:
         if case.rest_via_timeout:
             rest_conf = 0.5
         else:
-            rest_conf = min(case.rest_frames / max(REST_CONFIRM_FRAMES, 1), 1.0)
+            rest_conf = min(case.rest_frames / max(cfg.REST_CONFIRM_FRAMES, 1), 1.0)
 
-        bin_d, _ = _nearest_bin(final_pos, tracked_bins) if final_pos else (float("inf"), None)
+        if ref_pos and tracked_bins:
+            ref_bbox = np.array([ref_pos[0]-5, ref_pos[1]-5,
+                                 ref_pos[0]+5, ref_pos[1]+5])
+            bin_d, _ = _best_bin_hierarchical(ref_bbox, ref_pos, tracked_bins)
+            bin_d = bin_d if bin_d < float("inf") else float("inf")
+        else:
+            bin_d = float("inf")
         bin_prox  = max(0.0, 1.0 - bin_d / 500.0) if bin_d < float("inf") else 0.0
 
         l4_conf = ev.confidence if ev else 0.5
 
         evidence_conf = (
-            CONF_COUPLING_W * coupling_conf +
-            CONF_DIVERGE_W  * diverge_conf  +
-            CONF_REST_W     * rest_conf      +
-            CONF_BIN_PROX_W * bin_prox
+            cfg.CONF_COUPLING_W * coupling_conf +
+            cfg.CONF_DIVERGE_W  * diverge_conf  +
+            cfg.CONF_REST_W     * rest_conf      +
+            cfg.CONF_BIN_PROX_W * bin_prox
         )
         final_conf = round(0.50 * l4_conf + 0.50 * evidence_conf, 3)
 
-        if final_conf < MIN_CONFIDENCE_TO_ACT and is_violation:
+        if final_conf < cfg.MIN_CONFIDENCE_TO_ACT and is_violation:
             is_violation = False
             reasons.append(f"L5_low_evidence conf={final_conf:.2f}")
             case.log("low_evidence_blocked")
 
         # FIX 4: Suppress no_coupling penalty when L4 independently confirms violation
         l4_confirms_violation = (l4_verdict == "illegal_dumping")
-        if (case.coupling_frames < MIN_COUPLING_FRAMES
+        if (case.coupling_frames < cfg.MIN_COUPLING_FRAMES
                 and is_violation
                 and not l4_confirms_violation):
             final_conf = max(0.0, final_conf - 0.15)
             reasons.append(f"L5_no_coupling coupling={case.coupling_frames}f")
             case.log("no_coupling_penalty")
-        elif case.coupling_frames < MIN_COUPLING_FRAMES and is_violation:
+        elif case.coupling_frames < cfg.MIN_COUPLING_FRAMES and is_violation:
             reasons.append(f"L5_weak_coupling coupling={case.coupling_frames}f (l4_confirmed)")
             case.log("weak_coupling_noted_l4_confirmed")
 
@@ -785,8 +839,8 @@ class DumpingAgent:
     def _is_ghost(self, case: _Case, ph: Optional[_PersonHistory]) -> bool:
         if ph is None:
             return True
-        if ph.frames < GHOST_MIN_FRAMES or ph.movement < GHOST_MIN_MOVEMENT:
-            if case.coupling_frames >= MIN_COUPLING_FRAMES:
+        if ph.frames < cfg.GHOST_MIN_FRAMES or ph.movement < cfg.GHOST_MIN_MOVEMENT:
+            if case.coupling_frames >= cfg.MIN_COUPLING_FRAMES:
                 return False
             return True
         return False
@@ -800,6 +854,74 @@ class DumpingAgent:
             if obj.track_id not in self._persons:
                 self._persons[obj.track_id] = _PersonHistory()
             self._persons[obj.track_id].update(_centroid(obj.bbox))
+
+    def _nearest_historical_person(
+        self,
+        point: Tuple[float, float],
+        radius_px: float = 160.0,
+        max_frames_back: int = 25,
+    ) -> Optional[int]:
+        """
+        Search person trail histories for whoever was closest to `point`
+        up to max_frames_back frames ago. Returns person track_id or None.
+        """
+        best_pid  = None
+        best_dist = float("inf")
+        for pid, ph in self._persons.items():
+            trail = list(ph.trail)
+            # Only look at last max_frames_back entries
+            recent = trail[-max_frames_back:] if len(trail) > max_frames_back else trail
+            for pos in recent:
+                d = _dist(pos, point)
+                if d < best_dist:
+                    best_dist = d
+                    best_pid  = pid
+        if best_dist <= radius_px:
+            return best_pid
+        return None
+    
+    def _nearest_person_ballistic(
+        self,
+        point: Tuple[float, float],
+        radius_px: float = 400.0,
+        max_frames_back: int = 25,
+    ) -> Optional[int]:
+        """
+        Ballistic trajectory check — projects each person's historical
+        velocity forward and checks if the projected path passes near `point`.
+        Handles far throws where proximity alone fails.
+        """
+        best_pid  = None
+        best_dist = float("inf")
+
+        for pid, ph in self._persons.items():
+            trail = list(ph.trail)
+            if len(trail) < 3:
+                continue
+
+            recent = trail[-max_frames_back:] if len(trail) > max_frames_back else trail
+
+            for i in range(len(recent) - 2):
+                # Velocity at this historical moment
+                vx = recent[i+1][0] - recent[i][0]
+                vy = recent[i+1][1] - recent[i][1]
+                speed = math.hypot(vx, vy)
+                if speed < 1.0:
+                    continue
+
+                # Project forward up to max_frames_back steps
+                px, py = recent[i]
+                for step in range(1, max_frames_back):
+                    proj_x = px + vx * step
+                    proj_y = py + vy * step
+                    d = _dist((proj_x, proj_y), point)
+                    if d < best_dist:
+                        best_dist = d
+                        best_pid  = pid
+
+        if best_dist <= radius_px:
+            return best_pid
+        return None
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -829,7 +951,7 @@ class DumpingAgent:
     def _purge(self) -> None:
         stale = [
             k for k, c in self._cases.items()
-            if not c.locked and c.frames_since_update > MAX_CASE_AGE_FRAMES
+            if not c.locked and c.frames_since_update > cfg.MAX_CASE_AGE_FRAMES
         ]
         for k in stale:
             del self._cases[k]
