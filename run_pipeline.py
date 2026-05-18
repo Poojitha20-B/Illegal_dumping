@@ -40,6 +40,7 @@ from Layer5.visualizer        import (
     draw_l5_evidence_bars,
     draw_l5_summary_box,
 )
+from penalty_manager import process_pipeline_violation
 
 _COL_BG = (20, 20, 20)
 
@@ -79,7 +80,7 @@ def _draw_l4_banners(frame, events, W, H):
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
-def run(source, save, debug, do_calibrate=True):
+def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Bengaluru"):
 
     print("[Pipeline] Booting VidTrace...")
 
@@ -245,6 +246,17 @@ def run(source, save, debug, do_calibrate=True):
                                     f"blur={result.blur_score:.1f} | "
                                     f"scanned={result.frames_scanned}f"
                                 )
+                            # ── Penalty challan ───────────────────────────────────────────
+                            challan_id = process_pipeline_violation(
+                                plate_number   = result.plate_text,
+                                evidence_video = "vidtrace_output.mp4" if save else None,
+                                evidence_plate = result.saved_paths[0] if result.saved_paths else None,
+                                location       = location,
+                                confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
+                                auto_pdf       = True,
+                            )
+                            if challan_id:
+                                print(f"[Challan] Issued: {challan_id}")
 
                 # ── Visualise ─────────────────────────────────────────────────
                 vis = frame.copy()
@@ -328,10 +340,12 @@ def run(source, save, debug, do_calibrate=True):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--source",        default="0")
-    p.add_argument("--save",          action="store_true")
-    p.add_argument("--debug",         action="store_true")
-    p.add_argument("--no-calibrate",  action="store_true",
+    p.add_argument("--source", default="0")
+    p.add_argument("--save", action="store_true")
+    p.add_argument("--debug", action="store_true")
+    p.add_argument("--no-calibrate", action="store_true",
                    help="Skip auto-calibration and use config defaults")
+    p.add_argument("--location", default="Outer Ring Road, Bengaluru",
+                   help="Location string written into the challan")
     args = p.parse_args()
-    run(args.source, args.save, args.debug, do_calibrate=not args.no_calibrate)
+    run(args.source, args.save, args.debug, do_calibrate=not args.no_calibrate, location=args.location)
