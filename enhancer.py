@@ -521,6 +521,7 @@ class Enhancer:
         pair_id:     str,
         save_dir:    str                             = "evidence",
         frame_iter:  Optional[Iterator[np.ndarray]] = None,
+        force_evidence_frame: Optional[np.ndarray]  = None,
     ) -> EnhancementResult:
 
         t0 = time.time()
@@ -562,6 +563,9 @@ class Enhancer:
             f"composite={best_composite:.1f} "
             f"shape={best_frame.shape}"
         )
+        # Evidence photo is pinned to the throw moment if provided;
+        # best_frame is still used for plate scanning (car may appear later)
+        evidence_frame = force_evidence_frame if force_evidence_frame is not None else best_frame
 
         # ── Step 3: fast-alpr on full best frame ──────────────────────────
         all_candidates: list[tuple[str, float]] = []
@@ -651,7 +655,8 @@ class Enhancer:
             logger.debug(f"[Enhancer] debug image error: {e}")
 
         # ── Step 6: annotated evidence frame ─────────────────────────────
-        ev = best_frame.copy()
+        # ── Step 6: annotated evidence frame ─────────────────────────────
+        ev = evidence_frame.copy()
         if person_bbox is not None:
             px1, py1, px2, py2 = [int(v) for v in person_bbox]
             cv2.rectangle(ev, (px1, py1), (px2, py2), (0, 0, 255), 2)

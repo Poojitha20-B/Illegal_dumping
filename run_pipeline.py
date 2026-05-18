@@ -110,6 +110,7 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
     agent          = DumpingAgent()
     enhancer       = Enhancer()
     frame_buffer   = deque(maxlen=100)
+    violation_evidence_frames = {}    
     delivery_agent = DeliveryAgent()
     delivery_agent.start()
 
@@ -158,6 +159,12 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                 ts           = time.time()
                 extractor.update(tracked_objs, tracked_bins, ts)
                 l4_events    = inference.update(tracked_objs, tracked_bins)
+                # ── Cache throw-moment frames ─────────────────────────────────────
+                for t in tracked_objs:
+                    if t.is_trash and t.trash_how == "thrown":
+                        if t.track_id not in violation_evidence_frames:
+                            violation_evidence_frames[t.track_id] = frame.copy()
+                            print(f"[Evidence] Cached throw frame for trash_id={t.track_id} @ frame {frame_idx}")
 
                 # ── Layer 5 ───────────────────────────────────────────────────
                 l5_new = agent.update(frame_idx, tracked_objs, tracked_bins, l4_events)
@@ -222,20 +229,29 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                                     f"running enhancer on full frame"
                                 )
 
-                            combined = list(cap_frame_generator(cap, 150))
-                            result   = enhancer.process_event(
-                                frame      = frame,
-                                person_bbox= (
-                                    person_obj.bbox
-                                    if person_obj is not None
-                                    else None
+                            trash_id       = verdict["object_id"]
+                            evidence_frame = violation_evidence_frames.get(trash_id, None)
+                            is_cached      = evidence_frame is not None
+
+                            if evidence_frame is None:
+                                lookback       = min(40, len(frame_buffer) - 1)
+                                evidence_frame = frame_buffer[-(lookback + 1)]
+                                print(f"[Evidence] No cached frame for trash_id={trash_id}, using frame_buffer[-{lookback+1}]")
+                            else:
+                                print(f"[Evidence] Using cached throw frame for trash_id={trash_id}")
+
+                            # Only scan future frames when we DON'T have the throw moment cached
+                            combined = list(cap_frame_generator(cap, 150))  # always scan future for plate
+                            result = enhancer.process_event(
+                                frame                = evidence_frame,        # base frame (also used if no future frames)
+                                person_bbox          = (
+                                    person_obj.bbox if person_obj is not None else None
                                 ),
-                                person_id  = verdict["person_id"],
-                                pair_id    = verdict["pair_id"],
-                                save_dir   = "evidence",
-                                frame_iter = (
-                                    iter(combined) if combined else None
-                                ),
+                                person_id            = verdict["person_id"],
+                                pair_id              = verdict["pair_id"],
+                                save_dir             = "evidence",
+                                frame_iter           = iter(combined) if combined else None,  # future frames → plate scan
+                                force_evidence_frame = evidence_frame if is_cached else None, # pin throw photo ← ADD THIS
                             )
                             if result.plate_text:
                                 print(
@@ -250,10 +266,16 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                                     f"scanned={result.frames_scanned}f"
                                 )
                             # ── Penalty challan ───────────────────────────────────────────
+                            # Use the throw-moment evidence photo for the challan,
+                            # not the ALPR debug frame (which is the car mirror shot)
+                            evidence_photo = next(
+                                (p for p in result.saved_paths if "_evidence.jpg" in p),
+                                result.saved_paths[0] if result.saved_paths else None,
+                            )
                             challan_id = process_pipeline_violation(
                                 plate_number   = result.plate_text,
                                 evidence_video = "vidtrace_output.mp4" if save else None,
-                                evidence_plate = result.saved_paths[0] if result.saved_paths else None,
+                                evidence_plate = evidence_photo,
                                 location       = location,
                                 confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
                                 auto_pdf       = True,
