@@ -41,6 +41,7 @@ from Layer5.visualizer        import (
     draw_l5_summary_box,
 )
 from penalty_manager import process_pipeline_violation
+from delivery_agent import DeliveryAgent
 
 _COL_BG = (20, 20, 20)
 
@@ -109,6 +110,8 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
     agent          = DumpingAgent()
     enhancer       = Enhancer()
     frame_buffer   = deque(maxlen=100)
+    delivery_agent = DeliveryAgent()
+    delivery_agent.start()
 
     src = int(source) if source.isdigit() else source
     cap = cv2.VideoCapture(src)
@@ -257,6 +260,8 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                             )
                             if challan_id:
                                 print(f"[Challan] Issued: {challan_id}")
+                            if challan_id:
+                                delivery_agent.notify_new_challan(challan_id)
 
                 # ── Visualise ─────────────────────────────────────────────────
                 vis = frame.copy()
@@ -317,6 +322,7 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
         if writer:
             writer.release()
         cv2.destroyAllWindows()
+        delivery_agent.stop()
         print(f"\n[Pipeline] Done. Frames: {frame_idx}")
 
         all_results = agent.get_all_results()
