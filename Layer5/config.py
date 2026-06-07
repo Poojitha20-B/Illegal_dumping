@@ -11,18 +11,18 @@ GHOST_MIN_MOVEMENT       = 20.0
 COUPLING_WINDOW          = 8
 COUPLING_COS_THRESH      = 0.60
 COUPLING_SPEED_RATIO     = 3.0
-MIN_COUPLING_FRAMES      = 3
+MIN_COUPLING_FRAMES      = 5
 MIN_MOVE_PX_FOR_COUPLING = 3.0
 
 # Release detection
 DIVERGE_COS_THRESH       = 0.20
 DIVERGE_DIST_GROW        = True
-DIVERGE_CONFIRM_FRAMES   = 2
+DIVERGE_CONFIRM_FRAMES   = 3
 
 # Rest confirmation
 REST_VEL_PX              = 4.0
-REST_CONFIRM_FRAMES      = 5
-REST_MAX_WAIT            = 60
+REST_CONFIRM_FRAMES      = 3
+REST_MAX_WAIT            = 20
 
 # Trajectory intent
 TRAJ_WINDOW              = 25

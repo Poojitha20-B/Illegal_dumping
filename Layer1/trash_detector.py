@@ -148,7 +148,7 @@ class TrashDetector:
     RELEASE_CONFIRM     = 8
     MATCH_DIST_PX       = 80
 
-    THROW_MIN_HELD      = 3
+    THROW_MIN_HELD      = 8
     THROW_VANISH_FRAMES = 4
 
     def __init__(self):
@@ -298,7 +298,7 @@ class TrashDetector:
 
         for ghost in self._ghosts:
             ghost["frames_gone"] += 1
-            if ghost["frames_gone"] <= self.THROW_VANISH_FRAMES:
+            if 2 <= ghost["frames_gone"] <= self.THROW_VANISH_FRAMES:
                 throw_detections.append(TrashDetection(
                     bbox       = ghost["last_bbox"],
                     label      = ghost["label"],

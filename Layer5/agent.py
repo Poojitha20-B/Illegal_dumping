@@ -508,12 +508,26 @@ class DumpingAgent:
         ph:           Optional[_PersonHistory],
     ) -> Optional[dict]:
 
+        # WATCHING: not yet confirmed possession
+        # Do NOT jump to RELEASED from here — L4 firing early while the bag
+        # is still held causes the overlay to show RELEASED prematurely.
+        # Instead, wait for L5 coupling to confirm POSSESSED first.
+        # WATCHING: not yet confirmed possession.
+        # Never jump straight to RELEASED from WATCHING — always go through POSSESSED.
+        # Jumping to RELEASED here is what causes the overlay to show "RELEASED"
+        # while the bag is still in the person's hand.
         if case.state == _State.WATCHING:
             if case.stored_l4_event and case.stored_l4_event.event != "pending":
-                if case.coupling_frames < cfg.MIN_COUPLING_FRAMES:
-                    case.log(f"l4_fired_no_coupling coupling={case.coupling_frames}f")
-                case.state = _State.RELEASED
-                case.post_release_frames = 0
+                if case.coupling_frames >= cfg.MIN_COUPLING_FRAMES:
+                    # L5 confirmed possession AND L4 says released — safe to go to RELEASED
+                    case.state = _State.RELEASED
+                    case.post_release_frames = 0
+                    case.log(f"watching_to_released l4+l5 coupling={case.coupling_frames}f")
+                else:
+                    # L4 fired but possession not yet confirmed by L5 — advance to POSSESSED
+                    # and wait for divergence signal before going to RELEASED
+                    case.state = _State.POSSESSED
+                    case.log(f"watching_to_possessed l4_early coupling={case.coupling_frames}f")
             return None
 
         if case.state == _State.POSSESSED:
@@ -522,10 +536,36 @@ class DumpingAgent:
                     case.log(f"l4_release_backup coupling={case.coupling_frames}f")
                     case.state = _State.RELEASED
                     case.post_release_frames = 0
+                # Fast path: if L4 has a firm verdict AND L5 has confirmed
+                # possession, skip RELEASED+RESTING and finalise immediately.
+                # This prevents the verdict from arriving after the video ends.
+                if (case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
+                        and case.stored_l4_event.confidence >= 0.45):
+                    case.state = _State.RESTING
+                    case.rest_via_timeout = True
+                    case.log(
+                        f"l4_fast_path conf={case.stored_l4_event.confidence:.2f} "
+                        f"coupling={case.coupling_frames}f"
+                    )
+                    return self._finalise(case, tracked_bins, frame_idx, ph)
             return None
 
         if case.state == _State.RELEASED:
             case.post_release_frames += 1
+
+            # Fast path: L4 has a firm verdict and object has been
+            # released — no need to wait for full rest confirmation.
+            if (case.stored_l4_event is not None
+                    and case.stored_l4_event.event != "pending"
+                    and case.stored_l4_event.confidence >= 0.45
+                    and case.post_release_frames >= 3):
+                case.state = _State.RESTING
+                case.rest_via_timeout = True
+                case.log(
+                    f"l4_release_fast_path frames={case.post_release_frames} "
+                    f"conf={case.stored_l4_event.confidence:.2f}"
+                )
+                return self._finalise(case, tracked_bins, frame_idx, ph)
 
             if len(case.obj_trail) >= 3:
                 o_vel  = _vel(case.obj_trail, n=3)
@@ -539,18 +579,24 @@ class DumpingAgent:
                 if case.rest_frames >= cfg.REST_CONFIRM_FRAMES:
                     case.state = _State.RESTING
                     case.log(f"object_at_rest vel={o_spd:.1f}px")
+                    return self._finalise(case, tracked_bins, frame_idx, ph)
+
+            # Also count missing frames as rest — bag on ground may flicker
+            if case.obj_missing_frames >= 2:
+                case.rest_frames += 1
+                if case.rest_frames >= cfg.REST_CONFIRM_FRAMES:
+                    case.state = _State.RESTING
+                    case.rest_via_timeout = True
+                    case.log(f"rest_via_missing_frames missing={case.obj_missing_frames}f")
+                    return self._finalise(case, tracked_bins, frame_idx, ph)
 
             if case.post_release_frames >= cfg.REST_MAX_WAIT:
                 case.state = _State.RESTING
                 case.rest_via_timeout = True
                 case.log(f"rest_timeout after {cfg.REST_MAX_WAIT}f")
+                return self._finalise(case, tracked_bins, frame_idx, ph)
 
             return None
-
-        if case.state == _State.RESTING:
-            return self._finalise(case, tracked_bins, ph, frame_idx)
-
-        return None
 
     # ── FIX 7: Bin-entry detection ────────────────────────────────────────────
 
@@ -633,13 +679,7 @@ class DumpingAgent:
 
     # ── Finalise verdict ──────────────────────────────────────────────────────
 
-    def _finalise(
-        self,
-        case:         _Case,
-        tracked_bins: List[TrackedBin],
-        ph:           Optional[_PersonHistory],
-        frame_idx:    int,
-    ) -> dict:
+    def _finalise(self, case, tracked_bins, frame_idx, ph) -> dict:
 
         ev           = case.stored_l4_event
         l4_verdict   = ev.event if ev else None
@@ -951,7 +991,16 @@ class DumpingAgent:
     def _purge(self) -> None:
         stale = [
             k for k, c in self._cases.items()
-            if not c.locked and c.frames_since_update > cfg.MAX_CASE_AGE_FRAMES
+            if not c.locked and (
+                c.frames_since_update > cfg.MAX_CASE_AGE_FRAMES
+                or (
+                    # Kill unconfirmed cases quickly if the object has disappeared —
+                    # these are stale/phantom pairs (e.g. id2 that never really existed)
+                    c.frames_since_update > 10
+                    and c.state == _State.WATCHING
+                    and c.coupling_frames == 0
+                )
+            )
         ]
         for k in stale:
             del self._cases[k]

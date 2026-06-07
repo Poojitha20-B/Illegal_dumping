@@ -288,9 +288,31 @@ class DumpingInference:
                 continue
             if obj.track_id in confirmed_ids:
                 continue
+            # Reject objects with very short trails — these are noise detections
+            # or ghost re-detections (e.g. phantom id2), not real carried objects.
+            # Also reject objects with full trails (28/30) — they've been in frame
+            # a long time without being flagged, so they're carried accessories.
+            trail_len = len(obj.trail)
+            if trail_len < 5 or trail_len >= 28:
+                continue
+            # Exclude body-worn accessories — these are never dumped objects
+            # Exclude handbags that are moving WITH a person (body-worn).
+            # A handbag that is stationary (trail points clustered) is a
+            # dumped/dropped object and should NOT be excluded.
+            if obj.class_name == "handbag":
+                if len(obj.trail) >= 3:
+                    trail_pts = list(obj.trail)
+                    xs = [p[0] for p in trail_pts]
+                    ys = [p[1] for p in trail_pts]
+                    spread = ((max(xs)-min(xs))**2 + (max(ys)-min(ys))**2) ** 0.5
+                    if spread > 30:
+                        continue  # moving with person — body-worn, skip
+                    # else: stationary — treat as dumped candidate
+                else:
+                    continue  # too short a trail to tell — skip to be safe
             obj_c = _centroid(obj.bbox)
             for p in persons:
-                if _dist(obj_c, _centroid(p.bbox)) <= cfg.NEAR_PERSON_PX:
+                if _dist(obj_c, _centroid(p.bbox)) <= 100:  # tightened from 150px
                     candidate_trash.append(obj)
                     break
 
@@ -461,31 +483,30 @@ class DumpingInference:
 
         # Signal 3: divergence fallback
         # Signal 3: divergence fallback — instant trigger on separation
+        # Signal 3: divergence fallback
+        # Require much larger separation AND more held frames to avoid
+        # false release from natural person/object centroid offset
+        # Signal 3: divergence fallback
+        # 120px is just the natural centroid offset between person and carried object.
+        # Real separation requires larger distance AND sustained hold history.
+        # Signal 3: divergence fallback
+        # 120px is just the natural offset between person centroid and a bag
+        # at their side/feet. Real separation needs 250px+ AND sustained hold.
         if person is not None:
             d = _dist(trash_c, _centroid(person.bbox))
-            if d > HOLD_DISTANCE_PX:
+            if d > 250 and ps.held_frames >= cfg.HELD_FRAMES_MIN:
                 ps.release_confirmed  = True
                 ps.post_release_count = 0
                 ps.release_pos        = trash_c
-                # Zero out rest-wait so red box draws THIS frame
-                ps.consecutive_rest   = REST_FRAMES
-                ps.historically_linked = True
                 return
             if d <= cfg.NEAR_PERSON_PX:
                 ps.held_frames += 1
         else:
-            # Person has left the frame.
-            # [FIX-7] If this pair was bootstrapped via historical link, we already
-            # credited held_frames = HELD_FRAMES_MIN at birth. Treat person
-            # departure as a release signal ONLY if we have enough held evidence.
-            if ps.historically_linked and ps.held_frames < _HELD_FRAMES_MIN:
-                # Not enough evidence yet — keep waiting (object is just appearing)
-                return
-
-            # Person genuinely gone + sufficient hold evidence → release
-            ps.release_confirmed  = True
-            ps.post_release_count = 0
-            ps.release_pos        = trash_c
+            # Person left frame while object was being held — treat as release
+            if ps.held_frames >= cfg.HELD_FRAMES_MIN:
+                ps.release_confirmed  = True
+                ps.post_release_count = 0
+                ps.release_pos        = trash_c
 
     # ── Final decision ────────────────────────────────────────────────────────
 
@@ -566,7 +587,17 @@ class DumpingInference:
     def _purge(self) -> None:
         stale = [
             pid for pid, ps in self._pairs.items()
-            if ps.frames_since_update > MAX_PAIR_AGE and not ps.event_triggered
+            if (ps.frames_since_update > MAX_PAIR_AGE and not ps.event_triggered)
+            or (
+                # Only kill truly abandoned pairs — ones that have never been
+                # seen for 10+ frames AND have zero held frames (pure phantoms).
+                # Do NOT kill pairs that have accumulated held_frames > 0,
+                # those are real carried objects that just need more time.
+                ps.frames_since_update > 10
+                and not ps.release_confirmed
+                and not ps.event_triggered
+                and ps.held_frames == 0
+            )
         ]
         for pid in stale:
             del self._pairs[pid]

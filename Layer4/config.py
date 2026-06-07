@@ -3,10 +3,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Throw / hold thresholds ───────────────────────────────────────────────────
-MIN_HELD_FRAMES       = 3     # frames object must have been held before release counts
+MIN_HELD_FRAMES       = 15     # frames object must have been held before release counts
+HELD_FRAMES_MIN = 15   # alias used by dumping_inference.py getattr lookup
 MIN_POST_RELEASE      = 4     # frames of independent motion required after release
 MIN_SEQ_LEN           = 6     # skip evaluation if sequence shorter than this
-BIN_RELEASE_FAST_PX = 120
+BIN_RELEASE_FAST_PX = 220
 
 # ── Velocity thresholds (px / frame) ─────────────────────────────────────────
 MOTION_VEL_THRESHOLD  = 2.5   # minimum speed after release to count as a throw

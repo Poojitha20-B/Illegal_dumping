@@ -679,6 +679,8 @@ class ByteTrackWrapper:
             d = truly_new_dets[i]
             bag_classes = {"handbag", "bag", "backpack"}
             birth_thresh = 0.14 if d.class_name in bag_classes else INIT_TRACK_THRESH
+            # Never birth handbag tracks — they are body-worn accessories
+            # that cause false positive pairs with nearby persons
             if d.confidence >= birth_thresh:
                 new_t = _InternalTrack(d.bbox, d.confidence, d.class_name)
                 if REID_ENABLED and frame is not None and truly_new_embs[i] is not None:
@@ -707,7 +709,14 @@ class ByteTrackWrapper:
             for j in range(i + 1, len(non_person_confirmed)):
                 a = non_person_confirmed[i]
                 b = non_person_confirmed[j]
-                if (a.locked_class or a.class_name) != (b.locked_class or b.class_name):
+                # Same class OR both are bag-type objects (handbag vs backpack
+                # is the same physical object with different YOLO labels)
+                a_cls = a.locked_class or a.class_name
+                b_cls = b.locked_class or b.class_name
+                bag_types = {"handbag", "backpack", "bag"}
+                same_class = a_cls == b_cls
+                both_bags  = a_cls in bag_types and b_cls in bag_types
+                if not same_class and not both_bags:
                     continue
                 acx = (a.bbox[0] + a.bbox[2]) / 2
                 acy = (a.bbox[1] + a.bbox[3]) / 2
@@ -746,6 +755,7 @@ class ByteTrackWrapper:
         for t in self._tracks:
             if not t.is_confirmed:
                 continue
+            #bag_classes = {"handbag", "bag", "backpack"}
             bag_classes = {"handbag", "bag", "backpack"}
             floor = 3 if (t.locked_class or t.class_name) in bag_classes else effective_min_frames
             if t.age < floor:       # [FIX-T3] was bare MIN_TRACK_FRAMES
@@ -798,9 +808,44 @@ class ByteTrackWrapper:
                 del self._public_tracks[tid]
 
         # ════ STAGE 10: Trash tagging ══════════════════════════════════════════
+        output = self._dedup_overlapping(output)
+
+        # ── Step 9: tag trash + update cumulative counter ─────────────
         self._tag_trash(output, trash_detections)
 
         return output
+    
+    def _dedup_overlapping(
+        self, tracks: List[TrackedObject]
+    ) -> List[TrackedObject]:
+        """
+        Remove duplicate tracks of the same physical object.
+        When two non-person tracks overlap with IoU > 0.4, keep only
+        the one with higher confidence. This prevents the same bag from
+        being tracked as both 'handbag' and 'backpack' simultaneously.
+        """
+        persons     = [t for t in tracks if t.class_name == "person"]
+        non_persons = [t for t in tracks if t.class_name != "person"]
+
+        suppressed = set()
+        for i in range(len(non_persons)):
+            for j in range(i + 1, len(non_persons)):
+                if i in suppressed or j in suppressed:
+                    continue
+                a_cls = non_persons[i].class_name
+                b_cls = non_persons[j].class_name
+                bag_types = {"handbag", "backpack", "bag"}
+                both_bags = a_cls in bag_types and b_cls in bag_types
+                iou = _single_iou(non_persons[i].bbox, non_persons[j].bbox)
+                if iou > 0.40 or (both_bags and iou > 0.20):
+                    # Keep higher confidence; suppress the other
+                    if non_persons[i].confidence >= non_persons[j].confidence:
+                        suppressed.add(j)
+                    else:
+                        suppressed.add(i)
+
+        kept = [t for idx, t in enumerate(non_persons) if idx not in suppressed]
+        return persons + kept
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
