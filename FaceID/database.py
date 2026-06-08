@@ -8,7 +8,7 @@ import sqlite3
 import numpy as np
 from pathlib import Path
 
-DB_PATH = Path("faceid.db")
+DB_PATH = Path(__file__).resolve().parent.parent / "faceid.db"
 
 
 def get_connection() -> sqlite3.Connection:

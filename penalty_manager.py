@@ -1117,7 +1117,49 @@ class PenaltyManager:
                 """, (escalated,)).fetchall()
             for row in esc_ids:
                 self.generate_challan(row["challan_id"])
-
+                try:
+                    with _get_connection() as conn:
+                        v = conn.execute(
+                            "SELECT email, owner_name, penalty_amount, "
+                            "challan_id, pdf_challan_path FROM violations "
+                            "WHERE challan_id=?", (row["challan_id"],)
+                        ).fetchone()
+                    if v and v["email"]:
+                        from delivery_agent import _send_email
+                        from email.mime.multipart import MIMEMultipart
+                        from email.mime.text import MIMEText
+                        from email.mime.base import MIMEBase
+                        from email import encoders
+                        msg = MIMEMultipart()
+                        msg["From"]    = f"VidTrace BBMP Enforcement <{UPI_ID}>"
+                        msg["To"]      = v["email"]
+                        msg["Subject"] = f"[BBMP] Escalation Notice — Challan {v['challan_id']}"
+                        body = (
+                            f"Dear {v['owner_name']},\n\n"
+                            f"Your challan {v['challan_id']} has been escalated.\n"
+                            f"Updated penalty: Rs. {v['penalty_amount']:.2f}\n\n"
+                            f"Please pay immediately to avoid further escalation.\n\n"
+                            f"Pay via UPI: {UPI_ID}\n"
+                            f"Portal: {PAYMENT_PORTAL}\n\n"
+                            f"VidTrace BBMP Enforcement"
+                        )
+                        msg.attach(MIMEText(body.encode('utf-8').decode('ascii', 'ignore'), "plain"))
+                        pdf = v["pdf_challan_path"]
+                        if pdf and Path(pdf).exists():
+                            with open(pdf, "rb") as f:
+                                part = MIMEBase("application", "octet-stream")
+                                part.set_payload(f.read())
+                            encoders.encode_base64(part)
+                            part.add_header("Content-Disposition",
+                                           f"attachment; filename={Path(pdf).name}")
+                            msg.attach(part)
+                        ok = _send_email(msg, v["email"])
+                        if ok:
+                            logger.info("Escalation email sent for %s", row["challan_id"])
+                        else:
+                            logger.warning("Escalation email failed for %s", row["challan_id"])
+                except Exception as e:
+                    logger.warning("Escalation email error for %s: %s", row["challan_id"], e)
         logger.info("check_and_escalate: %d violation(s) escalated", escalated)
         return escalated
 
