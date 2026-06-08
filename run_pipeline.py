@@ -42,6 +42,8 @@ from Layer5.visualizer        import (
 )
 from penalty_manager import process_pipeline_violation
 from delivery_agent import DeliveryAgent
+from FaceID.face_id_module import FaceIDModule
+import subprocess, json, re
 
 _COL_BG = (20, 20, 20)
 
@@ -78,6 +80,44 @@ def _draw_l4_banners(frame, events, W, H):
         cv2.putText(frame, label, (x, y), font, scale, col, thick, cv2.LINE_AA)
     return frame
 
+def _extract_gps_location(source: str) -> str:
+    """
+    Extract GPS coordinates from video metadata using ffprobe,
+    reverse geocode to a human-readable address.
+    Falls back to default if not available.
+    """
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_format", "-show_streams", source],
+            capture_output=True, text=True, timeout=10
+        )
+        output = result.stdout + result.stderr
+        # Look for location tag in format: +lat+lon/ or ISO 6709
+        match = re.search(r'location\s*[:=]\s*([+-]\d+\.\d+)([+-]\d+\.\d+)', output)
+        if not match:
+            # Try alternate ffprobe format key
+            match = re.search(r'([+-]\d{2,3}\.\d+)([+-]\d{2,3}\.\d+)', output)
+        if match:
+            lat = float(match.group(1))
+            lon = float(match.group(2))
+            print(f"[Pipeline] GPS found: lat={lat}, lon={lon}")
+            # Reverse geocode using Nominatim (free, no API key)
+            import urllib.request
+            url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+            req = urllib.request.Request(url, headers={"User-Agent": "VidTrace/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            address = data.get("display_name", "")
+            if address:
+                # Shorten to first two components
+                parts = address.split(",")
+                short = ", ".join(p.strip() for p in parts[:3])
+                print(f"[Pipeline] Location resolved: {short}")
+                return short
+    except Exception as e:
+        print(f"[Pipeline] GPS extraction failed: {e}")
+    return "Bengaluru, Karnataka"
+
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
@@ -113,6 +153,14 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
     violation_evidence_frames = {}    
     delivery_agent = DeliveryAgent()
     delivery_agent.start()
+    face_id = FaceIDModule()
+
+    # Extract GPS location from video metadata if source is a file
+    if not source.isdigit():
+        gps_location = _extract_gps_location(source)
+        if gps_location != "Bengaluru, Karnataka":
+            location = gps_location
+            print(f"[Pipeline] Using GPS-derived location: {location}")
 
     src = int(source) if source.isdigit() else source
     cap = cv2.VideoCapture(src)
@@ -265,25 +313,51 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                                     f"blur={result.blur_score:.1f} | "
                                     f"scanned={result.frames_scanned}f"
                                 )
+                                # No plate → try FaceID on the evidence frame
+                                print("[Pipeline] No plate — attempting FaceID...")
+                                # Pass the full evidence photo path so the
+                                # challan uses it instead of the face crop
+                                evidence_photo = next(
+                                    (p for p in result.saved_paths if "_evidence.jpg" in p),
+                                    result.saved_paths[0] if result.saved_paths else None,
+                                )
+                                face_result = face_id.process(
+                                    frame         = evidence_frame,
+                                    location      = location,
+                                    confidence    = verdict["confidence"],
+                                    evidence_path = evidence_photo,
+                                )
+                                if face_result:
+                                    if face_result["status"] == "matched":
+                                        print(f"[FaceID] ✅ Identified: {face_result['name']} | challan={face_result['challan_id']}")
+                                        delivery_agent.notify_new_challan(face_result["challan_id"])
+                                    else:
+                                        print(f"[FaceID] ❓ Unknown person — logged for manual review")
+                                # Skip the normal challan flow below since FaceID handled it
+                                continue
                             # ── Penalty challan ───────────────────────────────────────────
                             # Use the throw-moment evidence photo for the challan,
                             # not the ALPR debug frame (which is the car mirror shot)
-                            evidence_photo = next(
-                                (p for p in result.saved_paths if "_evidence.jpg" in p),
-                                result.saved_paths[0] if result.saved_paths else None,
-                            )
-                            challan_id = process_pipeline_violation(
-                                plate_number   = result.plate_text,
-                                evidence_video = "vidtrace_output.mp4" if save else None,
-                                evidence_plate = evidence_photo,
-                                location       = location,
-                                confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
-                                auto_pdf       = True,
-                            )
-                            if challan_id:
-                                print(f"[Challan] Issued: {challan_id}")
-                            if challan_id:
-                                delivery_agent.notify_new_challan(challan_id)
+                            # ── Penalty challan (only if plate was found; FaceID handles no-plate case) ──
+                            if not result.plate_text:
+                                pass  # already handled by FaceID above
+                            else:
+                                evidence_photo = next(
+                                    (p for p in result.saved_paths if "_evidence.jpg" in p),
+                                    result.saved_paths[0] if result.saved_paths else None,
+                                )
+                                challan_id = process_pipeline_violation(
+                                    plate_number   = result.plate_text,
+                                    evidence_video = "vidtrace_output.mp4" if save else None,
+                                    evidence_plate = evidence_photo,
+                                    location       = location,
+                                    confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
+                                    auto_pdf       = True,
+                                )
+                                if challan_id:
+                                    print(f"[Challan] Issued: {challan_id}")
+                                if challan_id:
+                                    delivery_agent.notify_new_challan(challan_id)
 
                 # ── Visualise ─────────────────────────────────────────────────
                 vis = frame.copy()

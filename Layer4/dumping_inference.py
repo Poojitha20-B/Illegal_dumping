@@ -279,7 +279,21 @@ class DumpingInference:
         self._person_history.update(persons)
 
         # ── Build candidate object list (FIX 6) ──────────────────────────────
-        confirmed_trash = [o for o in tracked_objects if o.is_trash]
+        # Exclude handbags that are moving with a person (body-worn accessory)
+        # even if Layer 1 tagged them as trash — check trail spread first
+        def _is_moving_handbag(obj) -> bool:
+            if obj.class_name != "handbag":
+                return False
+            if len(obj.trail) >= 3:
+                trail_pts = list(obj.trail)
+                xs = [p[0] for p in trail_pts]
+                ys = [p[1] for p in trail_pts]
+                spread = ((max(xs)-min(xs))**2 + (max(ys)-min(ys))**2) ** 0.5
+                return spread > 30  # moving → body-worn
+            return False  # too short to tell → allow it, trail-spread will catch later  # too short to tell → treat as body-worn
+
+        confirmed_trash = [o for o in tracked_objects 
+                          if o.is_trash and o.class_name != "handbag"]
         confirmed_ids   = {o.track_id for o in confirmed_trash}
 
         candidate_trash: List[TrackedObject] = []
@@ -294,6 +308,10 @@ class DumpingInference:
             # a long time without being flagged, so they're carried accessories.
             trail_len = len(obj.trail)
             if trail_len < 5 or trail_len >= 28:
+                continue
+            # Handbags need a longer trail before being considered —
+            # this kills short-lived ghost detections like body-worn shoulder bags
+            if obj.class_name == "handbag" and trail_len < 15:
                 continue
             # Exclude body-worn accessories — these are never dumped objects
             # Exclude handbags that are moving WITH a person (body-worn).
