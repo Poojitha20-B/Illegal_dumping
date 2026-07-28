@@ -1,0 +1,15 @@
+{
+    "ID": "vid0344.mp4",
+    "Video Info": {
+        "Duration (s)": 13.6,
+        "Resolution": "1920x1080",
+        "Frame Rate (fps)": 30.0,
+        "Time of Day": "night",
+        "Lighting Conditions": "low"
+    },
+    "Dumping": 1,
+    "DumpingDetails": {
+        "Type of Dumping": "dynamic",
+        "Timestamp": 8.0
+    }
+}

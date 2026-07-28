@@ -1,0 +1,15 @@
+{
+    "ID": "vid0410.mp4",
+    "Video Info": {
+        "Duration (s)": 15.53,
+        "Resolution": "1280x720",
+        "Frame Rate (fps)": 30.0,
+        "Time of Day": "day",
+        "Lighting Conditions": "high"
+    },
+    "Dumping": 1,
+    "DumpingDetails": {
+        "Type of Dumping": "dynamic",
+        "Timestamp": 1.0
+    }
+}

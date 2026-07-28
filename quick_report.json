@@ -1,0 +1,192 @@
+{
+  "summary": {
+    "total": 15,
+    "tp": 3,
+    "tn": 5,
+    "fp": 2,
+    "fn": 5,
+    "accuracy": 0.533,
+    "precision": 0.6,
+    "recall": 0.375,
+    "f1": 0.462,
+    "mean_timestamp_error_s": 2.36,
+    "accuracy_by_time_of_day": {
+      "day": 0.571,
+      "night": 0.0
+    },
+    "accuracy_by_dumping_type": {
+      "static": 0.25,
+      "dynamic": 0.5
+    }
+  },
+  "records": [
+    {
+      "video": "vid0001.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 4.0,
+      "gt_type": "static",
+      "time_of_day": "day",
+      "pred_dumping": true,
+      "pred_timestamp": 1.33,
+      "correct": true,
+      "error": null,
+      "timestamp_error_s": 2.67
+    },
+    {
+      "video": "vid0002.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": true,
+      "error": null
+    },
+    {
+      "video": "vid0003.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 18.0,
+      "gt_type": "static",
+      "time_of_day": "night",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0004.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 15.0,
+      "gt_type": "dynamic",
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0006.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": true,
+      "pred_timestamp": 4.56,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0007.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": true,
+      "error": null
+    },
+    {
+      "video": "vid0008.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 16.0,
+      "gt_type": "dynamic",
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0009.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": true,
+      "error": null
+    },
+    {
+      "video": "vid0010.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 4.0,
+      "gt_type": "dynamic",
+      "time_of_day": "day",
+      "pred_dumping": true,
+      "pred_timestamp": 4.97,
+      "correct": true,
+      "error": null,
+      "timestamp_error_s": 0.9699999999999998
+    },
+    {
+      "video": "vid0011.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": true,
+      "error": null
+    },
+    {
+      "video": "vid0013.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": true,
+      "error": null
+    },
+    {
+      "video": "vid0014.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 8.0,
+      "gt_type": "dynamic",
+      "time_of_day": "day",
+      "pred_dumping": true,
+      "pred_timestamp": 4.57,
+      "correct": true,
+      "error": null,
+      "timestamp_error_s": 3.4299999999999997
+    },
+    {
+      "video": "vid0015.mp4",
+      "gt_dumping": false,
+      "gt_timestamp": null,
+      "gt_type": null,
+      "time_of_day": "day",
+      "pred_dumping": true,
+      "pred_timestamp": 10.08,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0016.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 6.0,
+      "gt_type": "static",
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": false,
+      "error": null
+    },
+    {
+      "video": "vid0017.mp4",
+      "gt_dumping": true,
+      "gt_timestamp": 3.0,
+      "gt_type": "static",
+      "time_of_day": "day",
+      "pred_dumping": false,
+      "pred_timestamp": null,
+      "correct": false,
+      "error": null
+    }
+  ]
+}

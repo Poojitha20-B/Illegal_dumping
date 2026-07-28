@@ -1,0 +1,15 @@
+{
+    "ID": "vid0313.mp4",
+    "Video Info": {
+        "Duration (s)": 14.8,
+        "Resolution": "640x360",
+        "Frame Rate (fps)": 25.0,
+        "Time of Day": "night",
+        "Lighting Conditions": "high"
+    },
+    "Dumping": 1,
+    "DumpingDetails": {
+        "Type of Dumping": "static",
+        "Timestamp": 7.0
+    }
+}

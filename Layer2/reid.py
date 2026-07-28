@@ -33,7 +33,22 @@ EMBED_EMA_ALPHA = 0.3   # 0 = never update, 1 = replace completely
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 
+# Module-level cache: the OSNet checkpoint is loaded from disk exactly once
+# per process, no matter how many ReIDEmbedder() instances get constructed
+# (one per video in batch_eval.py's run_headless()). Without this cache,
+# every ReIDEmbedder() re-reads osnet_x0_25_imagenet.pth from disk, which is
+# what was inflating per-video runtime to minutes even after ModelBundle
+# fixed the Layer1/BinDetector reload issue.
+_CACHED_MODEL = None
+_CACHED_TRANSFORM = None
+_CACHE_ATTEMPTED = False
+
+
 def _try_load_torch_model():
+    global _CACHED_MODEL, _CACHED_TRANSFORM, _CACHE_ATTEMPTED
+    if _CACHE_ATTEMPTED:
+        return _CACHED_MODEL, _CACHED_TRANSFORM
+    _CACHE_ATTEMPTED = True
     try:
         model = torchreid.models.build_model(
             name='osnet_x0_25',
@@ -50,10 +65,12 @@ def _try_load_torch_model():
                         std=[0.229, 0.224, 0.225]),
         ])
         logger.info("[ReID] OSNet_x0_25 pretrained loaded (CPU).")
-        return model, transform
+        _CACHED_MODEL, _CACHED_TRANSFORM = model, transform
+        return _CACHED_MODEL, _CACHED_TRANSFORM
     except Exception as e:
         logger.warning("[ReID] torchreid unavailable (%s). Using histogram fallback.", e)
-        return None, None
+        _CACHED_MODEL, _CACHED_TRANSFORM = None, None
+        return _CACHED_MODEL, _CACHED_TRANSFORM
 
 
 # ── Colour histogram fallback (no torch required) ─────────────────────────────

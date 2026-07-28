@@ -1,0 +1,1337 @@
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/site-packages/torchreid/reid/metrics/rank.py:11: UserWarning: Cython evaluation (very fast so highly recommended) is unavailable, now use python evaluation.
+  warnings.warn(
+[ModelBundle] loading detector/tracker models once …
+[Layer1] Loading rtdetr-l.pt on mps …
+[Layer1] Tracking classes : ['backpack', 'bag', 'book', 'bottle', 'box', 'chair', 'clock', 'couch', 'cup', 'handbag', 'laptop', 'person', 'sports ball', 'tv', 'vase']
+[Layer1] Lighting thresh  : brightness<80  contrast<40
+[Layer1] Fusion IoU thresh: 0.45
+[BinDetector] Loading fine-tuned model: weights/trash_bin_detector.pt on cpu
+[BinDetector] Ready — detects class: 'trash_bin'
+[ModelBundle] ready.
+[1/150] Running: vid0001.mp4
+Successfully loaded imagenet pretrained weights from "/Users/balamuralibr/.cache/torch/checkpoints/osnet_x0_25_imagenet.pth"
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P1 T2 | coupling=15f cos=1.00 | intent=0.00 rest=3f | frames=[10, 40]
+         evidence: coupling=0.92 diverge=0.73 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[2/150] Running: vid0002.mp4
+[3/150] Running: vid0003.mp4
+[BinTracker] 📍 Bin registered — ID #9000 bottom-center=(1676.93505859375, 696.9876708984375)
+[BinTracker] 🗑️  Bin flagged — ID #9000 (total flagged: 1)
+[Layer4-FIX7] obj_id=17 retroactively linked to person_id=15 via history (dist=79px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.70 | P15 T17 | coupling=11f cos=1.00 | intent=0.62 rest=3f | frames=[14, 34]
+         evidence: coupling=0.97 diverge=0.79 rest=1.00 bin=0.82
+         reasons:  l5_independent_detection | L5_bin_near dist=90px bin#9000
+[Layer4-FIX7] obj_id=18 retroactively linked to person_id=15 via history (dist=47px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=48 retroactively linked to person_id=41 via history (dist=37px). State → POSSESSED, held_frames=15
+[4/150] Running: vid0004.mp4
+[5/150] Running: vid0006.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P52 T53 | coupling=9f cos=1.00 | intent=0.00 rest=3f | frames=[33, 114]
+         evidence: coupling=0.96 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[6/150] Running: vid0007.mp4
+[Layer4-FIX7] obj_id=75 retroactively linked to person_id=65 via history (dist=97px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9001 bottom-center=(680.4235229492188, 1440.3134765625)
+[BinTracker] 🗑️  Bin flagged — ID #9001 (total flagged: 1)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.56 | P65 T75 | coupling=13f cos=1.00 | intent=0.41 rest=1f | frames=[104, 159]
+         evidence: coupling=0.84 diverge=0.70 rest=0.50 bin=0.36
+         reasons:  l5_independent_detection | L5_bin_near dist=319px bin#9001
+[7/150] Running: vid0008.mp4
+[8/150] Running: vid0009.mp4
+[BinTracker] 📍 Bin registered — ID #9002 bottom-center=(124.33013153076172, 239.88526916503906)
+[BinTracker] 🗑️  Bin flagged — ID #9002 (total flagged: 1)
+[Layer4-FIX7] obj_id=192 retroactively linked to person_id=168 via history (dist=10px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=138px bin#9002
+[Layer4-FIX7] obj_id=192 retroactively linked to person_id=199 via history (dist=8px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=138px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P168 T192 | coupling=0f cos=0.00 | intent=0.59 rest=2f | frames=[170, 174]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.94
+         reasons:  released_near_bin dist=138px bin#9002 | L5_bin_near dist=30px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P199 T192 | coupling=1f cos=0.00 | intent=0.46 rest=2f | frames=[171, 199]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.88
+         reasons:  released_near_bin dist=138px bin#9002 | L5_bin_near dist=61px bin#9002
+[Layer4-FIX7] obj_id=207 retroactively linked to person_id=168 via history (dist=16px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=120px bin#9002
+[Layer4-FIX7] obj_id=207 retroactively linked to person_id=199 via history (dist=14px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=120px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P168 T207 | coupling=10f cos=0.00 | intent=0.18 rest=2f | frames=[209, 226]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.85
+         reasons:  released_near_bin dist=120px bin#9002 | L5_bin_near dist=75px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.75 | P199 T207 | coupling=0f cos=0.00 | intent=0.32 rest=2f | frames=[225, 229]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.99
+         reasons:  released_near_bin dist=120px bin#9002 | L5_bin_near dist=7px bin#9002
+[Layer4-FIX7] obj_id=211 retroactively linked to person_id=210 via history (dist=7px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=153px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P210 T211 | coupling=11f cos=0.00 | intent=0.61 rest=2f | frames=[561, 578]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.94
+         reasons:  released_near_bin dist=153px bin#9002 | L5_bin_near dist=31px bin#9002
+[Layer4-FIX7] obj_id=230 retroactively linked to person_id=210 via history (dist=21px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=210px bin#9002
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P210 T230 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[700, 704]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.91
+         reasons:  released_near_bin dist=210px bin#9002 | L5_bin_near dist=45px bin#9002
+[9/150] Running: vid0010.mp4
+[Layer4-FIX7] obj_id=262 retroactively linked to person_id=231 via history (dist=48px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=290 retroactively linked to person_id=235 via history (dist=68px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P232 T303 | coupling=12f cos=0.98 | intent=0.00 rest=3f | frames=[124, 149]
+         evidence: coupling=0.97 diverge=0.72 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P231 T311 | coupling=6f cos=0.92 | intent=0.00 rest=0f | frames=[173, 222]
+         evidence: coupling=0.79 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=315 retroactively linked to person_id=231 via history (dist=27px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9003 bottom-center=(1814.962890625, 558.7103881835938)
+[BinTracker] 🗑️  Bin flagged — ID #9003 (total flagged: 1)
+[10/150] Running: vid0011.mp4
+[Layer4-FIX7] obj_id=362 retroactively linked to person_id=360 via history (dist=36px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=384 retroactively linked to person_id=364 via history (dist=18px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=395 retroactively linked to person_id=360 via history (dist=39px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9004 bottom-center=(809.0264282226562, 416.18939208984375)
+[BinTracker] 🗑️  Bin flagged — ID #9004 (total flagged: 1)
+[Layer4-FIX7] obj_id=439 retroactively linked to person_id=435 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P417 T475 | coupling=33f cos=1.00 | intent=0.07 rest=3f | frames=[549, 591]
+         evidence: coupling=0.95 diverge=1.00 rest=1.00 bin=0.93
+         reasons:  l5_independent_detection | L5_bin_near dist=33px bin#9004
+[11/150] Running: vid0013.mp4
+[12/150] Running: vid0014.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P505 T506 | coupling=16f cos=1.00 | intent=0.00 rest=3f | frames=[105, 137]
+         evidence: coupling=0.95 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9005 bottom-center=(520.5237426757812, 148.01638793945312)
+[BinTracker] 🗑️  Bin flagged — ID #9005 (total flagged: 1)
+[Layer4-FIX7] obj_id=509 retroactively linked to person_id=505 via history (dist=94px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=188px bin#9005
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P505 T509 | coupling=2f cos=0.00 | intent=0.61 rest=2f | frames=[195, 208]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.84
+         reasons:  released_near_bin dist=188px bin#9005 | L5_bin_near dist=79px bin#9005
+[Layer4-FIX7] obj_id=510 retroactively linked to person_id=505 via history (dist=83px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=197px bin#9005
+[Layer4-FIX7] obj_id=513 retroactively linked to person_id=505 via history (dist=77px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P505 T510 | coupling=2f cos=0.00 | intent=0.44 rest=2f | frames=[217, 225]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.89
+         reasons:  released_near_bin dist=197px bin#9005 | L5_bin_near dist=56px bin#9005
+[Layer4] Event: illegal_dumping | Conf: 0.88 | bin#9005 present but bottom_dist=240px > 145px
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P505 T513 | coupling=5f cos=0.00 | intent=0.62 rest=2f | frames=[219, 229]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.89
+         reasons:  bin#9005 present but bottom_dist=240px > 145px | L5_bin_near dist=55px bin#9005
+[13/150] Running: vid0015.mp4
+[BinTracker] 📍 Bin registered — ID #9006 bottom-center=(953.5508422851562, 413.729736328125)
+[BinTracker] 🗑️  Bin flagged — ID #9006 (total flagged: 1)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.58 | P557 T571 | coupling=5f cos=1.00 | intent=0.78 rest=3f | frames=[10, 24]
+         evidence: coupling=0.96 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection | L5_traj_intent person=1.00 obj=0.50 combined=0.78
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.61 | P558 T563 | coupling=8f cos=1.00 | intent=0.78 rest=3f | frames=[10, 29]
+         evidence: coupling=0.83 diverge=0.71 rest=1.00 bin=0.36
+         reasons:  l5_independent_detection | L5_bin_near dist=320px bin#9006
+[BinTracker] 📍 Bin registered — ID #9007 bottom-center=(1721.441650390625, 1079.4537353515625)
+[BinTracker] 🗑️  Bin flagged — ID #9007 (total flagged: 2)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.69 | P598 T609 | coupling=5f cos=1.00 | intent=0.10 rest=3f | frames=[92, 110]
+         evidence: coupling=0.90 diverge=0.71 rest=1.00 bin=0.96
+         reasons:  l5_independent_detection | L5_bin_near dist=20px bin#9007
+[Layer4-FIX7] obj_id=634 retroactively linked to person_id=617 via history (dist=44px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.69 | P586 T592 | coupling=52f cos=1.00 | intent=0.21 rest=0f | frames=[62, 146]
+         evidence: coupling=0.91 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  l5_independent_detection | l5_bin_entry_override: obj_vanished=True coupling=52f peak_cos=1.00 person_approach=0.38 person_bin_dist=346px bin#9006
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.71 | P557 T597 | coupling=33f cos=1.00 | intent=0.34 rest=3f | frames=[85, 147]
+         evidence: coupling=0.92 diverge=0.74 rest=1.00 bin=1.00
+         reasons:  l5_independent_detection | L5_bin_near dist=0px bin#9006
+[Layer4-FIX7] obj_id=654 retroactively linked to person_id=643 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=190px bin#9006
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.86 | P643 T654 | coupling=5f cos=1.00 | intent=0.94 rest=0f | frames=[148, 157]
+         evidence: coupling=0.99 diverge=1.00 rest=0.50 bin=0.70
+         reasons:  released_near_bin dist=190px bin#9006 | l5_bin_entry_override: obj_vanished=True coupling=5f peak_cos=1.00 person_approach=1.00 person_bin_dist=152px bin#9006
+[Layer4-FIX7] obj_id=662 retroactively linked to person_id=615 via history (dist=53px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.63 | P643 T665 | coupling=5f cos=1.00 | intent=0.27 rest=1f | frames=[151, 180]
+         evidence: coupling=1.00 diverge=0.70 rest=0.50 bin=0.74
+         reasons:  l5_independent_detection | L5_bin_near dist=130px bin#9006
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.64 | P586 T662 | coupling=7f cos=1.00 | intent=0.34 rest=3f | frames=[150, 249]
+         evidence: coupling=0.91 diverge=1.00 rest=0.50 bin=0.65
+         reasons:  l5_independent_detection | L5_bin_near dist=176px bin#9006
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.66 | P615 T662 | coupling=74f cos=0.94 | intent=0.11 rest=3f | frames=[160, 249]
+         evidence: coupling=0.88 diverge=0.88 rest=0.50 bin=0.95
+         reasons:  l5_independent_detection | L5_bin_near dist=24px bin#9006
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P617 T634 | coupling=80f cos=1.00 | intent=0.05 rest=3f | frames=[134, 252]
+         evidence: coupling=0.91 diverge=0.76 rest=1.00 bin=0.03
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=745 retroactively linked to person_id=741 via history (dist=37px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=756 retroactively linked to person_id=757 via history (dist=44px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=766 retroactively linked to person_id=753 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=816 retroactively linked to person_id=785 via history (dist=7px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P753 T766 | coupling=36f cos=0.95 | intent=0.41 rest=3f | frames=[330, 396]
+         evidence: coupling=0.89 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=837 retroactively linked to person_id=643 via history (dist=64px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=838 retroactively linked to person_id=566 via history (dist=60px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=853 retroactively linked to person_id=860 via history (dist=24px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9008 bottom-center=(1140.516357421875, 659.1612548828125)
+[BinTracker] 🗑️  Bin flagged — ID #9008 (total flagged: 3)
+[Layer4-FIX7] obj_id=902 retroactively linked to person_id=860 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.42 | P880 T766 | coupling=6f cos=1.00 | intent=0.11 rest=3f | frames=[466, 489]
+         evidence: coupling=0.87 diverge=0.96 rest=1.00 bin=0.15
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=962 retroactively linked to person_id=617 via history (dist=13px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1013 retroactively linked to person_id=617 via history (dist=5px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.69 | P915 T934 | coupling=54f cos=0.98 | intent=0.18 rest=3f | frames=[504, 617]
+         evidence: coupling=0.95 diverge=0.73 rest=1.00 bin=0.82
+         reasons:  l5_independent_detection | L5_bin_near dist=92px bin#9006
+[Layer4-FIX7] obj_id=1032 retroactively linked to person_id=880 via history (dist=65px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1036 retroactively linked to person_id=915 via history (dist=14px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1082 retroactively linked to person_id=915 via history (dist=15px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1092 retroactively linked to person_id=1026 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P915 T1036 | coupling=77f cos=0.99 | intent=0.00 rest=3f | frames=[643, 756]
+         evidence: coupling=0.96 diverge=0.84 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1112 retroactively linked to person_id=880 via history (dist=65px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.60 | P915 T1082 | coupling=44f cos=1.00 | intent=0.00 rest=3f | frames=[717, 831]
+         evidence: coupling=0.87 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1139 retroactively linked to person_id=1088 via history (dist=1px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.29 | P574 T1082 | coupling=11f cos=0.70 | intent=0.00 rest=1f | frames=[879, 916]
+         evidence: coupling=0.70 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9009 bottom-center=(665.8145751953125, 321.7204895019531)
+[BinTracker] 🗑️  Bin flagged — ID #9009 (total flagged: 4)
+[Layer4-FIX7] obj_id=1173 retroactively linked to person_id=1093 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.67 | P1170 T1195 | coupling=39f cos=1.00 | intent=0.30 rest=3f | frames=[1021, 1085]
+         evidence: coupling=0.94 diverge=0.74 rest=1.00 bin=0.67
+         reasons:  l5_independent_detection | L5_bin_near dist=167px bin#9009
+[Layer4-FIX7] obj_id=1224 retroactively linked to person_id=1105 via history (dist=8px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1220 retroactively linked to person_id=1213 via history (dist=3px). State → POSSESSED, held_frames=15
+[14/150] Running: vid0016.mp4
+[BinTracker] 📍 Bin registered — ID #9010 bottom-center=(801.9659423828125, 516.6117553710938)
+[BinTracker] 🗑️  Bin flagged — ID #9010 (total flagged: 1)
+[15/150] Running: vid0017.mp4
+[Layer4-FIX7] obj_id=1245 retroactively linked to person_id=1269 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1278 retroactively linked to person_id=1269 via history (dist=1px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1278 retroactively linked to person_id=1290 via history (dist=75px). State → POSSESSED, held_frames=15
+[16/150] Running: vid0019.mp4
+[Layer4-FIX7] obj_id=1299 retroactively linked to person_id=1298 via history (dist=53px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1299 retroactively linked to person_id=1295 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P1298 T1299 | coupling=10f cos=1.00 | intent=0.00 rest=3f | frames=[43, 59]
+         evidence: coupling=1.00 diverge=0.73 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[17/150] Running: vid0020.mp4
+[18/150] Running: vid0022.mp4
+[Layer4-FIX7] obj_id=1304 retroactively linked to person_id=1303 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1305 retroactively linked to person_id=1303 via history (dist=4px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.60 | P1303 T1305 | coupling=21f cos=0.95 | intent=0.00 rest=3f | frames=[265, 294]
+         evidence: coupling=0.91 diverge=0.94 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1307 retroactively linked to person_id=1303 via history (dist=35px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1312 retroactively linked to person_id=1303 via history (dist=67px). State → POSSESSED, held_frames=15
+[19/150] Running: vid0024.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P1314 T1374 | coupling=8f cos=0.98 | intent=0.00 rest=1f | frames=[180, 250]
+         evidence: coupling=0.98 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.51 | P1435 T1443 | coupling=9f cos=0.94 | intent=0.00 rest=1f | frames=[266, 312]
+         evidence: coupling=0.76 diverge=0.78 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P1313 T1441 | coupling=10f cos=1.00 | intent=0.00 rest=3f | frames=[215, 313]
+         evidence: coupling=0.95 diverge=0.80 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P1315 T1455 | coupling=7f cos=0.98 | intent=0.00 rest=0f | frames=[319, 351]
+         evidence: coupling=0.92 diverge=0.92 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[20/150] Running: vid0025.mp4
+[21/150] Running: vid0026.mp4
+[Layer4-FIX7] obj_id=1483 retroactively linked to person_id=1482 via history (dist=7px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1485 retroactively linked to person_id=1482 via history (dist=14px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P1482 T1485 | coupling=96f cos=1.00 | intent=0.00 rest=3f | frames=[109, 213]
+         evidence: coupling=0.93 diverge=0.75 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P1482 T1554 | coupling=29f cos=1.00 | intent=0.00 rest=3f | frames=[213, 257]
+         evidence: coupling=0.90 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1600 retroactively linked to person_id=1482 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1603 retroactively linked to person_id=1482 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1603 retroactively linked to person_id=1469 via history (dist=74px). State → POSSESSED, held_frames=15
+[22/150] Running: vid0027.mp4
+[23/150] Running: vid0028.mp4
+[BinTracker] 📍 Bin registered — ID #9011 bottom-center=(271.7655334472656, 223.81686401367188)
+[BinTracker] 🗑️  Bin flagged — ID #9011 (total flagged: 1)
+[Layer4-FIX7] obj_id=1625 retroactively linked to person_id=1612 via history (dist=26px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9012 bottom-center=(1187.748779296875, 1077.8829345703125)
+[BinTracker] 🗑️  Bin flagged — ID #9012 (total flagged: 2)
+[Layer4-FIX7] obj_id=1634 retroactively linked to person_id=1613 via history (dist=23px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.52 | P1613 T1637 | coupling=6f cos=0.65 | intent=0.00 rest=3f | frames=[417, 434]
+         evidence: coupling=0.65 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1676 retroactively linked to person_id=1615 via history (dist=20px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P1615 T1671 | coupling=5f cos=1.00 | intent=0.00 rest=3f | frames=[666, 681]
+         evidence: coupling=0.95 diverge=0.80 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1676 retroactively linked to person_id=1678 via history (dist=50px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P1615 T1676 | coupling=7f cos=1.00 | intent=0.00 rest=0f | frames=[670, 705]
+         evidence: coupling=0.92 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1687 retroactively linked to person_id=1678 via history (dist=50px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P1650 T1691 | coupling=12f cos=0.95 | intent=0.00 rest=3f | frames=[773, 805]
+         evidence: coupling=0.87 diverge=0.85 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9013 bottom-center=(1568.161865234375, 1079.2762451171875)
+[BinTracker] 🗑️  Bin flagged — ID #9013 (total flagged: 3)
+[24/150] Running: vid0029.mp4
+[25/150] Running: vid0030.mp4
+[BinTracker] 📍 Bin registered — ID #9014 bottom-center=(2268.06494140625, 2112.069580078125)
+[BinTracker] 🗑️  Bin flagged — ID #9014 (total flagged: 1)
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.52 | P1714 T1737 | coupling=5f cos=0.70 | intent=0.07 rest=0f | frames=[275, 303]
+         evidence: coupling=0.64 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[26/150] Running: vid0031.mp4
+[BinTracker] 📍 Bin registered — ID #9015 bottom-center=(191.50436401367188, 719.7040405273438)
+[BinTracker] 🗑️  Bin flagged — ID #9015 (total flagged: 1)
+[27/150] Running: vid0032.mp4
+[Layer4-FIX7] obj_id=1775 retroactively linked to person_id=1772 via history (dist=98px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P1772 T1775 | coupling=10f cos=1.00 | intent=0.00 rest=0f | frames=[193, 228]
+         evidence: coupling=0.97 diverge=0.78 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P1772 T1776 | coupling=8f cos=1.00 | intent=0.00 rest=1f | frames=[217, 256]
+         evidence: coupling=0.96 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[28/150] Running: vid0033.mp4
+[BinTracker] 📍 Bin registered — ID #9016 bottom-center=(798.0139770507812, 719.2267456054688)
+[BinTracker] 🗑️  Bin flagged — ID #9016 (total flagged: 1)
+[Layer4-FIX7] obj_id=1783 retroactively linked to person_id=1782 via history (dist=28px). State → POSSESSED, held_frames=15
+[29/150] Running: vid0034.mp4
+[Layer4-FIX7] obj_id=1789 retroactively linked to person_id=1786 via history (dist=54px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.60 | P1786 T1791 | coupling=10f cos=0.94 | intent=0.00 rest=3f | frames=[117, 143]
+         evidence: coupling=0.85 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1815 retroactively linked to person_id=1786 via history (dist=128px). State → POSSESSED, held_frames=15
+[30/150] Running: vid0035.mp4
+[BinTracker] 📍 Bin registered — ID #9017 bottom-center=(880.080322265625, 539.1494750976562)
+[BinTracker] 🗑️  Bin flagged — ID #9017 (total flagged: 1)
+[31/150] Running: vid0036.mp4
+[Layer4-FIX7] obj_id=1888 retroactively linked to person_id=1884 via history (dist=90px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1892 retroactively linked to person_id=1883 via history (dist=58px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P1882 T1900 | coupling=5f cos=1.00 | intent=0.00 rest=0f | frames=[174, 204]
+         evidence: coupling=1.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=1914 retroactively linked to person_id=1908 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.95 | no_bin held=15f post=6f
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.65 | P1883 T1913 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[364, 389]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=15f post=6f | L5_weak_coupling coupling=0f (l4_confirmed)
+[Layer4-FIX7] obj_id=1918 retroactively linked to person_id=1916 via history (dist=86px). State → POSSESSED, held_frames=15
+[32/150] Running: vid0037.mp4
+[Layer4-FIX7] obj_id=1948 retroactively linked to person_id=1931 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2009 retroactively linked to person_id=1930 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1962 retroactively linked to person_id=1939 via history (dist=158px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=1962 retroactively linked to person_id=1932 via history (dist=159px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2108 retroactively linked to person_id=1931 via history (dist=28px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9018 bottom-center=(1661.792236328125, 484.4198303222656)
+[BinTracker] 🗑️  Bin flagged — ID #9018 (total flagged: 1)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.66 | P1931 T2196 | coupling=9f cos=1.00 | intent=0.32 rest=1f | frames=[523, 606]
+         evidence: coupling=0.88 diverge=1.00 rest=0.50 bin=0.82
+         reasons:  l5_independent_detection | L5_bin_near dist=92px bin#9018
+[Layer4-FIX7] obj_id=2293 retroactively linked to person_id=2198 via history (dist=41px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2293 retroactively linked to person_id=1938 via history (dist=114px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | bin#9018 present but bottom_dist=1374px > 400px
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P1938 T2293 | coupling=0f cos=0.00 | intent=0.57 rest=2f | frames=[670, 687]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  bin#9018 present but bottom_dist=1374px > 400px | L5_weak_coupling coupling=0f (l4_confirmed)
+[Layer4-FIX7] obj_id=2293 retroactively linked to person_id=2322 via history (dist=135px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2312 retroactively linked to person_id=1938 via history (dist=132px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2312 retroactively linked to person_id=2322 via history (dist=101px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2293 retroactively linked to person_id=1934 via history (dist=122px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2409 retroactively linked to person_id=1931 via history (dist=31px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | no_bin held=48f post=3f
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.41 | P1934 T2293 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[859, 865]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=48f post=3f | L5_weak_coupling coupling=0f (l4_confirmed)
+[33/150] Running: vid0039.mp4
+[34/150] Running: vid0041.mp4
+[BinTracker] 📍 Bin registered — ID #9019 bottom-center=(1788.1768798828125, 569.4140625)
+[BinTracker] 🗑️  Bin flagged — ID #9019 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9020 bottom-center=(1703.374267578125, 919.5755004882812)
+[BinTracker] 🗑️  Bin flagged — ID #9020 (total flagged: 2)
+[Layer4-FIX7] obj_id=2486 retroactively linked to person_id=2475 via history (dist=54px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.58 | P2475 T2478 | coupling=20f cos=1.00 | intent=0.23 rest=1f | frames=[15, 67]
+         evidence: coupling=0.96 diverge=0.88 rest=0.50 bin=0.20
+         reasons:  l5_independent_detection | L5_bin_near dist=400px bin#9020
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P2475 T2486 | coupling=7f cos=1.00 | intent=0.05 rest=3f | frames=[52, 72]
+         evidence: coupling=0.95 diverge=1.00 rest=0.50 bin=0.16
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P2475 T2490 | coupling=5f cos=0.99 | intent=0.02 rest=3f | frames=[64, 85]
+         evidence: coupling=0.94 diverge=0.70 rest=1.00 bin=0.02
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=2511 retroactively linked to person_id=2475 via history (dist=45px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.73 | P2475 T2510 | coupling=23f cos=1.00 | intent=0.68 rest=3f | frames=[230, 271]
+         evidence: coupling=0.95 diverge=1.00 rest=1.00 bin=0.92
+         reasons:  l5_independent_detection | L5_bin_near dist=38px bin#9020
+[35/150] Running: vid0042.mp4
+[BinTracker] 📍 Bin registered — ID #9021 bottom-center=(99.12698364257812, 716.9390869140625)
+[BinTracker] 🗑️  Bin flagged — ID #9021 (total flagged: 1)
+[36/150] Running: vid0045.mp4
+[Layer4-FIX7] obj_id=2515 retroactively linked to person_id=2516 via history (dist=21px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2544 retroactively linked to person_id=2516 via history (dist=42px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P2516 T2515 | coupling=58f cos=1.00 | intent=0.00 rest=1f | frames=[61, 148]
+         evidence: coupling=0.94 diverge=0.84 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P2516 T2544 | coupling=44f cos=1.00 | intent=0.00 rest=3f | frames=[130, 181]
+         evidence: coupling=0.99 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[37/150] Running: vid0046.mp4
+[Layer4-FIX7] obj_id=2723 retroactively linked to person_id=2719 via history (dist=52px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2723 retroactively linked to person_id=2720 via history (dist=69px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9022 bottom-center=(1806.862060546875, 520.01904296875)
+[BinTracker] 🗑️  Bin flagged — ID #9022 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9023 bottom-center=(1338.7357177734375, 493.5129699707031)
+[BinTracker] 🗑️  Bin flagged — ID #9023 (total flagged: 2)
+[BinTracker] 📍 Bin registered — ID #9024 bottom-center=(759.1353759765625, 443.1932373046875)
+[BinTracker] 🗑️  Bin flagged — ID #9024 (total flagged: 3)
+[Layer4-FIX7] obj_id=2740 retroactively linked to person_id=2721 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2740 retroactively linked to person_id=2742 via history (dist=58px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.67 | P2742 T2740 | coupling=7f cos=0.95 | intent=0.55 rest=1f | frames=[139, 173]
+         evidence: coupling=0.95 diverge=1.00 rest=0.50 bin=0.81
+         reasons:  l5_independent_detection | L5_bin_near dist=97px bin#9023
+[Layer4-FIX7] obj_id=2765 retroactively linked to person_id=2724 via history (dist=60px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2777 retroactively linked to person_id=2724 via history (dist=74px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2777 retroactively linked to person_id=2787 via history (dist=76px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P2782 T2784 | coupling=33f cos=1.00 | intent=0.00 rest=3f | frames=[670, 717]
+         evidence: coupling=0.90 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=2799 retroactively linked to person_id=2797 via history (dist=22px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2806 retroactively linked to person_id=2797 via history (dist=26px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2820 retroactively linked to person_id=2821 via history (dist=46px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2823 retroactively linked to person_id=2821 via history (dist=42px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2826 retroactively linked to person_id=2719 via history (dist=31px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2827 retroactively linked to person_id=2719 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2831 retroactively linked to person_id=2814 via history (dist=82px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2841 retroactively linked to person_id=2821 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P2817 T2849 | coupling=20f cos=1.00 | intent=0.00 rest=3f | frames=[1346, 1377]
+         evidence: coupling=0.95 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=2876 retroactively linked to person_id=2817 via history (dist=19px). State → POSSESSED, held_frames=15
+[38/150] Running: vid0047.mp4
+[39/150] Running: vid0048.mp4
+[Layer4-FIX7] obj_id=2888 retroactively linked to person_id=2880 via history (dist=35px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2888 retroactively linked to person_id=2879 via history (dist=96px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2906 retroactively linked to person_id=2880 via history (dist=44px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2906 retroactively linked to person_id=2883 via history (dist=48px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2919 retroactively linked to person_id=2880 via history (dist=8px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2919 retroactively linked to person_id=2879 via history (dist=52px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2924 retroactively linked to person_id=2915 via history (dist=72px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2926 retroactively linked to person_id=2915 via history (dist=94px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=2931 retroactively linked to person_id=2879 via history (dist=7px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P2915 T2924 | coupling=5f cos=1.00 | intent=0.00 rest=0f | frames=[43, 72]
+         evidence: coupling=0.99 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9025 bottom-center=(1678.21533203125, 777.7723388671875)
+[BinTracker] 🗑️  Bin flagged — ID #9025 (total flagged: 1)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.61 | P2879 T2931 | coupling=16f cos=1.00 | intent=0.73 rest=3f | frames=[53, 83]
+         evidence: coupling=0.92 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection | L5_traj_intent person=0.83 obj=0.60 combined=0.73
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P2915 T2936 | coupling=10f cos=1.00 | intent=0.00 rest=0f | frames=[57, 90]
+         evidence: coupling=0.97 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P2915 T2926 | coupling=29f cos=1.00 | intent=0.00 rest=1f | frames=[47, 120]
+         evidence: coupling=0.99 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=2989 retroactively linked to person_id=2974 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3003 retroactively linked to person_id=2997 via history (dist=36px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P2997 T3003 | coupling=18f cos=1.00 | intent=0.57 rest=3f | frames=[174, 214]
+         evidence: coupling=0.94 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=3114 retroactively linked to person_id=2879 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P2945 T2989 | coupling=12f cos=1.00 | intent=0.00 rest=1f | frames=[163, 241]
+         evidence: coupling=1.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9026 bottom-center=(473.9452819824219, 204.0915069580078)
+[BinTracker] 🗑️  Bin flagged — ID #9026 (total flagged: 2)
+[Layer4-FIX7] obj_id=3170 retroactively linked to person_id=2997 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.59 | P2997 T3140 | coupling=6f cos=1.00 | intent=0.53 rest=1f | frames=[241, 279]
+         evidence: coupling=0.95 diverge=1.00 rest=0.50 bin=0.17
+         reasons:  l5_independent_detection | L5_bin_near dist=416px bin#9025
+[Layer4-FIX7] obj_id=3175 retroactively linked to person_id=2997 via history (dist=54px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3177 retroactively linked to person_id=2997 via history (dist=13px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3182 retroactively linked to person_id=2997 via history (dist=64px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3175 retroactively linked to person_id=3005 via history (dist=41px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.56 | P2997 T3159 | coupling=6f cos=1.00 | intent=0.57 rest=1f | frames=[258, 293]
+         evidence: coupling=0.88 diverge=0.71 rest=0.50 bin=0.28
+         reasons:  l5_independent_detection | L5_bin_near dist=360px bin#9025
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.59 | P2997 T3157 | coupling=5f cos=0.93 | intent=0.34 rest=1f | frames=[258, 302]
+         evidence: coupling=0.82 diverge=1.00 rest=0.50 bin=0.35
+         reasons:  l5_independent_detection | L5_bin_near dist=327px bin#9025
+[Layer4-FIX7] obj_id=3207 retroactively linked to person_id=3178 via history (dist=35px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.62 | P2997 T3177 | coupling=5f cos=1.00 | intent=0.61 rest=3f | frames=[279, 309]
+         evidence: coupling=0.88 diverge=0.71 rest=1.00 bin=0.38
+         reasons:  l5_independent_detection | L5_bin_near dist=309px bin#9025
+[Layer4-FIX7] obj_id=3226 retroactively linked to person_id=2879 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=64px bin#9026
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.66 | P3178 T3207 | coupling=15f cos=1.00 | intent=0.78 rest=3f | frames=[302, 332]
+         evidence: coupling=0.99 diverge=0.70 rest=1.00 bin=0.62
+         reasons:  l5_independent_detection | L5_bin_near dist=192px bin#9026
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P2879 T3226 | coupling=0f cos=0.00 | intent=0.63 rest=2f | frames=[332, 336]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.93
+         reasons:  released_near_bin dist=64px bin#9026 | L5_bin_near dist=33px bin#9026
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P2997 T3182 | coupling=24f cos=1.00 | intent=0.07 rest=3f | frames=[283, 350]
+         evidence: coupling=0.94 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.63 | P3005 T3175 | coupling=15f cos=1.00 | intent=0.55 rest=1f | frames=[287, 368]
+         evidence: coupling=0.92 diverge=0.71 rest=0.50 bin=0.85
+         reasons:  l5_independent_detection | L5_bin_near dist=73px bin#9026
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.64 | P2945 T3175 | coupling=5f cos=0.89 | intent=0.16 rest=1f | frames=[317, 368]
+         evidence: coupling=0.89 diverge=1.00 rest=0.50 bin=0.66
+         reasons:  l5_independent_detection | L5_bin_near dist=169px bin#9026
+[Layer4-FIX7] obj_id=3312 retroactively linked to person_id=3288 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3305 retroactively linked to person_id=3270 via history (dist=39px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=101px bin#9026
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P3270 T3305 | coupling=0f cos=0.00 | intent=0.63 rest=2f | frames=[390, 394]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.91
+         reasons:  released_near_bin dist=101px bin#9026 | L5_bin_near dist=43px bin#9026
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P3288 T3312 | coupling=9f cos=1.00 | intent=0.59 rest=1f | frames=[380, 414]
+         evidence: coupling=0.97 diverge=0.70 rest=0.50 bin=0.13
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=3392 retroactively linked to person_id=3247 via history (dist=72px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P3224 T3400 | coupling=29f cos=1.00 | intent=0.00 rest=3f | frames=[504, 571]
+         evidence: coupling=0.85 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[40/150] Running: vid0051.mp4
+[41/150] Running: vid0053.mp4
+[BinTracker] 📍 Bin registered — ID #9027 bottom-center=(118.24065399169922, 539.6115112304688)
+[BinTracker] 🗑️  Bin flagged — ID #9027 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9028 bottom-center=(433.99310302734375, 534.0801391601562)
+[BinTracker] 🗑️  Bin flagged — ID #9028 (total flagged: 2)
+[42/150] Running: vid0054.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P3437 T3442 | coupling=5f cos=1.00 | intent=0.00 rest=1f | frames=[44, 78]
+         evidence: coupling=0.97 diverge=0.83 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P3448 T3453 | coupling=9f cos=1.00 | intent=0.00 rest=3f | frames=[126, 153]
+         evidence: coupling=0.99 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9029 bottom-center=(1413.35546875, 981.85205078125)
+[BinTracker] 🗑️  Bin flagged — ID #9029 (total flagged: 1)
+[43/150] Running: vid0055.mp4
+[BinTracker] 📍 Bin registered — ID #9030 bottom-center=(1131.098388671875, 694.561279296875)
+[BinTracker] 🗑️  Bin flagged — ID #9030 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9031 bottom-center=(571.9285888671875, 720.1906127929688)
+[BinTracker] 🗑️  Bin flagged — ID #9031 (total flagged: 2)
+[BinTracker] 📍 Bin registered — ID #9032 bottom-center=(1004.2191772460938, 384.1239929199219)
+[BinTracker] 🗑️  Bin flagged — ID #9032 (total flagged: 3)
+[BinTracker] 📍 Bin registered — ID #9033 bottom-center=(950.264404296875, 631.8129272460938)
+[BinTracker] 🗑️  Bin flagged — ID #9033 (total flagged: 4)
+[BinTracker] 📍 Bin registered — ID #9034 bottom-center=(722.92578125, 540.4483642578125)
+[BinTracker] 🗑️  Bin flagged — ID #9034 (total flagged: 5)
+[44/150] Running: vid0056.mp4
+[45/150] Running: vid0057.mp4
+[Layer4-FIX7] obj_id=3482 retroactively linked to person_id=3476 via history (dist=21px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3485 retroactively linked to person_id=3479 via history (dist=28px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9035 bottom-center=(352.86767578125, 451.09967041015625)
+[BinTracker] 🗑️  Bin flagged — ID #9035 (total flagged: 1)
+[46/150] Running: vid0058.mp4
+[Layer4-FIX7] obj_id=3494 retroactively linked to person_id=3492 via history (dist=49px). State → POSSESSED, held_frames=15
+[47/150] Running: vid0059.mp4
+[Layer4-FIX7] obj_id=3527 retroactively linked to person_id=3526 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3559 retroactively linked to person_id=3502 via history (dist=20px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3570 retroactively linked to person_id=3512 via history (dist=32px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P3502 T3559 | coupling=5f cos=0.99 | intent=0.00 rest=3f | frames=[133, 444]
+         evidence: coupling=0.99 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.36 | P3522 T3559 | coupling=40f cos=0.96 | intent=0.00 rest=3f | frames=[181, 508]
+         evidence: coupling=0.88 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=3776 retroactively linked to person_id=3769 via history (dist=39px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3776 retroactively linked to person_id=3511 via history (dist=40px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3776 retroactively linked to person_id=3747 via history (dist=50px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=3791 retroactively linked to person_id=3784 via history (dist=32px). State → POSSESSED, held_frames=15
+[48/150] Running: vid0060.mp4
+[49/150] Running: vid0061.mp4
+[Layer4-FIX7] obj_id=4002 retroactively linked to person_id=3957 via history (dist=86px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4032 retroactively linked to person_id=3957 via history (dist=90px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.95 | no_bin held=344f post=6f
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.65 | P3957 T3956 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[60, 454]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=344f post=6f | L5_weak_coupling coupling=0f (l4_confirmed)
+[50/150] Running: vid0062.mp4
+[51/150] Running: vid0064.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P4190 T4199 | coupling=16f cos=1.00 | intent=0.00 rest=0f | frames=[22, 82]
+         evidence: coupling=0.97 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P4190 T4291 | coupling=18f cos=1.00 | intent=0.00 rest=0f | frames=[262, 308]
+         evidence: coupling=0.96 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.35 | P4289 T4291 | coupling=14f cos=1.00 | intent=0.00 rest=2f | frames=[251, 341]
+         evidence: coupling=0.90 diverge=0.92 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P4294 T4322 | coupling=6f cos=1.00 | intent=0.00 rest=1f | frames=[332, 386]
+         evidence: coupling=0.92 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[52/150] Running: vid0065.mp4
+[BinTracker] 📍 Bin registered — ID #9036 bottom-center=(67.05904388427734, 477.4833984375)
+[BinTracker] 🗑️  Bin flagged — ID #9036 (total flagged: 1)
+[53/150] Running: vid0066.mp4
+[Layer4-FIX7] obj_id=4388 retroactively linked to person_id=4387 via history (dist=46px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4389 retroactively linked to person_id=4387 via history (dist=56px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4389 retroactively linked to person_id=4381 via history (dist=87px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P4387 T4389 | coupling=6f cos=1.00 | intent=0.00 rest=3f | frames=[137, 154]
+         evidence: coupling=0.83 diverge=0.83 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] ✅ LEGAL | illegal_dumping | conf=0.36 | P4381 T4389 | coupling=5f cos=1.00 | intent=0.00 rest=0f | frames=[191, 227]
+         evidence: coupling=0.90 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P4381 T4421 | coupling=9f cos=0.97 | intent=0.00 rest=3f | frames=[252, 273]
+         evidence: coupling=0.93 diverge=0.79 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4422 retroactively linked to person_id=4381 via history (dist=58px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.52 | P4381 T4422 | coupling=6f cos=0.99 | intent=0.00 rest=0f | frames=[284, 313]
+         evidence: coupling=0.89 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[54/150] Running: vid0068.mp4
+[Layer4-FIX7] obj_id=4432 retroactively linked to person_id=4427 via history (dist=76px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4444 retroactively linked to person_id=4426 via history (dist=63px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4475 retroactively linked to person_id=4426 via history (dist=16px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4484 retroactively linked to person_id=4426 via history (dist=47px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P4426 T4484 | coupling=24f cos=1.00 | intent=0.00 rest=3f | frames=[197, 231]
+         evidence: coupling=0.83 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4506 retroactively linked to person_id=4425 via history (dist=33px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9037 bottom-center=(1662.4189453125, 486.2033386230469)
+[BinTracker] 🗑️  Bin flagged — ID #9037 (total flagged: 1)
+[Layer4-FIX7] obj_id=4508 retroactively linked to person_id=4426 via history (dist=56px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4526 retroactively linked to person_id=4510 via history (dist=23px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4546 retroactively linked to person_id=4543 via history (dist=67px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4548 retroactively linked to person_id=4544 via history (dist=71px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4548 retroactively linked to person_id=4549 via history (dist=67px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.58 | P4426 T4546 | coupling=5f cos=1.00 | intent=0.64 rest=3f | frames=[543, 558]
+         evidence: coupling=0.98 diverge=1.00 rest=0.50 bin=0.10
+         reasons:  l5_independent_detection | L5_traj_intent person=0.83 obj=0.40 combined=0.64
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.57 | P4543 T4546 | coupling=24f cos=1.00 | intent=0.73 rest=1f | frames=[490, 576]
+         evidence: coupling=0.95 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection | L5_traj_intent person=0.58 obj=0.90 combined=0.73
+[Layer4-FIX7] obj_id=4557 retroactively linked to person_id=4426 via history (dist=61px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4580 retroactively linked to person_id=4544 via history (dist=17px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4586 retroactively linked to person_id=4491 via history (dist=100px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4592 retroactively linked to person_id=4589 via history (dist=23px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4592 retroactively linked to person_id=4571 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4594 retroactively linked to person_id=4589 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4594 retroactively linked to person_id=4571 via history (dist=37px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4595 retroactively linked to person_id=4589 via history (dist=23px). State → POSSESSED, held_frames=15
+[55/150] Running: vid0070.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P4601 T4602 | coupling=5f cos=1.00 | intent=0.00 rest=1f | frames=[12, 55]
+         evidence: coupling=0.95 diverge=0.72 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4610 retroactively linked to person_id=4601 via history (dist=9px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4611 retroactively linked to person_id=4601 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P4601 T4607 | coupling=56f cos=1.00 | intent=0.00 rest=3f | frames=[22, 102]
+         evidence: coupling=0.91 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9038 bottom-center=(254.0969696044922, 259.6527099609375)
+[BinTracker] 🗑️  Bin flagged — ID #9038 (total flagged: 1)
+[56/150] Running: vid0071.mp4
+[BinTracker] 📍 Bin registered — ID #9039 bottom-center=(602.1045532226562, 463.146728515625)
+[BinTracker] 🗑️  Bin flagged — ID #9039 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9040 bottom-center=(66.15839385986328, 477.0983581542969)
+[BinTracker] 🗑️  Bin flagged — ID #9040 (total flagged: 2)
+[Layer4-FIX7] obj_id=4614 retroactively linked to person_id=4613 via history (dist=52px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4615 retroactively linked to person_id=4613 via history (dist=46px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.68 | P4613 T4614 | coupling=312f cos=0.84 | intent=0.66 rest=3f | frames=[10, 344]
+         evidence: coupling=0.84 diverge=0.72 rest=1.00 bin=0.93
+         reasons:  l5_independent_detection | L5_bin_near dist=34px bin#9039
+[Layer4-FIX7] obj_id=4676 retroactively linked to person_id=4613 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.65 | P4613 T4676 | coupling=197f cos=0.98 | intent=0.11 rest=3f | frames=[1419, 1629]
+         evidence: coupling=0.98 diverge=0.40 rest=1.00 bin=0.85
+         reasons:  l5_independent_detection | L5_bin_near dist=73px bin#9039
+[Layer4-FIX7] obj_id=4734 retroactively linked to person_id=4613 via history (dist=57px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=206px bin#9039
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.74 | P4613 T4734 | coupling=13f cos=0.00 | intent=0.66 rest=2f | frames=[1730, 1747]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.95
+         reasons:  released_near_bin dist=206px bin#9039 | L5_bin_near dist=23px bin#9039
+[57/150] Running: vid0072.mp4
+[BinTracker] 📍 Bin registered — ID #9041 bottom-center=(99.43907928466797, 713.4768676757812)
+[BinTracker] 🗑️  Bin flagged — ID #9041 (total flagged: 1)
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P4755 T4757 | coupling=16f cos=1.00 | intent=0.07 rest=3f | frames=[12, 57]
+         evidence: coupling=0.90 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4760 retroactively linked to person_id=4756 via history (dist=69px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9042 bottom-center=(684.580078125, 408.1973571777344)
+[BinTracker] 🗑️  Bin flagged — ID #9042 (total flagged: 2)
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=73px bin#9042
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.85 | P4756 T4760 | coupling=5f cos=1.00 | intent=0.64 rest=0f | frames=[66, 76]
+         evidence: coupling=1.00 diverge=0.74 rest=0.50 bin=0.83
+         reasons:  released_near_bin dist=73px bin#9042 | l5_bin_entry_override: obj_vanished=True coupling=5f peak_cos=1.00 person_approach=0.83 person_bin_dist=129px bin#9042
+[Layer4-FIX7] obj_id=4778 retroactively linked to person_id=4755 via history (dist=42px). State → POSSESSED, held_frames=15
+[58/150] Running: vid0073.mp4
+[59/150] Running: vid0074.mp4
+[BinTracker] 📍 Bin registered — ID #9043 bottom-center=(1662.72802734375, 490.3402099609375)
+[BinTracker] 🗑️  Bin flagged — ID #9043 (total flagged: 1)
+[Layer4-FIX7] obj_id=4803 retroactively linked to person_id=4814 via history (dist=72px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=4872 retroactively linked to person_id=4825 via history (dist=60px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.65 | P4825 T4872 | coupling=8f cos=1.00 | intent=0.86 rest=1f | frames=[106, 139]
+         evidence: coupling=0.95 diverge=0.71 rest=0.50 bin=0.93
+         reasons:  l5_independent_detection | L5_bin_near dist=36px bin#9043
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.66 | P4825 T4870 | coupling=8f cos=1.00 | intent=0.79 rest=0f | frames=[105, 154]
+         evidence: coupling=1.00 diverge=0.70 rest=0.50 bin=0.98
+         reasons:  l5_independent_detection | l5_bin_entry_override: obj_vanished=True coupling=8f peak_cos=1.00 person_approach=0.71 person_bin_dist=314px bin#9043
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.64 | P4825 T4885 | coupling=16f cos=1.00 | intent=0.41 rest=0f | frames=[123, 176]
+         evidence: coupling=0.90 diverge=1.00 rest=0.50 bin=0.67
+         reasons:  l5_independent_detection | L5_bin_near dist=163px bin#9043
+[Layer4-FIX7] obj_id=4803 retroactively linked to person_id=4809 via history (dist=72px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.64 | P4802 T4914 | coupling=8f cos=0.83 | intent=0.09 rest=0f | frames=[173, 210]
+         evidence: coupling=0.71 diverge=0.88 rest=0.50 bin=1.00
+         reasons:  l5_independent_detection | L5_bin_near dist=0px bin#9043
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.51 | P4825 T4944 | coupling=7f cos=0.81 | intent=0.00 rest=3f | frames=[204, 232]
+         evidence: coupling=0.76 diverge=0.76 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4977 retroactively linked to person_id=4802 via history (dist=59px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.60 | P4802 T4959 | coupling=6f cos=0.98 | intent=0.02 rest=3f | frames=[212, 250]
+         evidence: coupling=0.84 diverge=1.00 rest=0.50 bin=0.40
+         reasons:  l5_independent_detection | L5_bin_near dist=300px bin#9043
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.62 | P4802 T4977 | coupling=9f cos=1.00 | intent=0.02 rest=3f | frames=[235, 255]
+         evidence: coupling=0.93 diverge=0.70 rest=1.00 bin=0.31
+         reasons:  l5_independent_detection | L5_bin_near dist=345px bin#9043
+[Layer4-FIX7] obj_id=4995 retroactively linked to person_id=4804 via history (dist=83px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.49 | P4802 T4953 | coupling=9f cos=1.00 | intent=0.00 rest=1f | frames=[200, 271]
+         evidence: coupling=0.91 diverge=0.41 rest=0.50 bin=0.07
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=4803 retroactively linked to person_id=4825 via history (dist=64px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P4825 T5020 | coupling=5f cos=1.00 | intent=0.44 rest=3f | frames=[330, 345]
+         evidence: coupling=1.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=5103 retroactively linked to person_id=4809 via history (dist=51px). State → POSSESSED, held_frames=15
+[60/150] Running: vid0076.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P5108 T5114 | coupling=19f cos=0.90 | intent=0.00 rest=3f | frames=[271, 299]
+         evidence: coupling=0.90 diverge=0.82 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[61/150] Running: vid0077.mp4
+[Layer4-FIX7] obj_id=5159 retroactively linked to person_id=5157 via history (dist=85px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5159 retroactively linked to person_id=5158 via history (dist=18px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5166 retroactively linked to person_id=5158 via history (dist=2px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P5158 T5159 | coupling=119f cos=1.00 | intent=0.00 rest=3f | frames=[504, 659]
+         evidence: coupling=0.98 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=5170 retroactively linked to person_id=5135 via history (dist=5px). State → POSSESSED, held_frames=15
+[62/150] Running: vid0078.mp4
+[BinTracker] 📍 Bin registered — ID #9044 bottom-center=(135.5204315185547, 1069.4906005859375)
+[BinTracker] 🗑️  Bin flagged — ID #9044 (total flagged: 1)
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.60 | P5174 T5175 | coupling=16f cos=1.00 | intent=0.32 rest=0f | frames=[31, 77]
+         evidence: coupling=0.96 diverge=0.72 rest=0.50 bin=0.49
+         reasons:  l5_independent_detection | l5_bin_entry_override: obj_vanished=True coupling=16f peak_cos=1.00 person_approach=0.58 person_bin_dist=522px bin#9044
+[63/150] Running: vid0079.mp4
+[64/150] Running: vid0080.mp4
+[65/150] Running: vid0081.mp4
+[66/150] Running: vid0082.mp4
+[67/150] Running: vid0083.mp4
+[68/150] Running: vid0087.mp4
+[69/150] Running: vid0089.mp4
+[BinTracker] 📍 Bin registered — ID #9045 bottom-center=(422.07806396484375, 698.5338134765625)
+[BinTracker] 🗑️  Bin flagged — ID #9045 (total flagged: 1)
+[Layer4-FIX7] obj_id=5196 retroactively linked to person_id=5192 via history (dist=41px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5195 retroactively linked to person_id=5197 via history (dist=111px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | bin#9045 present but bottom_dist=1138px > 400px
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.65 | P5197 T5195 | coupling=0f cos=0.00 | intent=0.64 rest=2f | frames=[205, 216]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.30
+         reasons:  bin#9045 present but bottom_dist=1138px > 400px | L5_bin_near dist=349px bin#9045
+[70/150] Running: vid0090.mp4
+[BinTracker] 📍 Bin registered — ID #9046 bottom-center=(98.82754516601562, 717.5403442382812)
+[BinTracker] 🗑️  Bin flagged — ID #9046 (total flagged: 1)
+[71/150] Running: vid0091.mp4
+[Layer4-FIX7] obj_id=5229 retroactively linked to person_id=5228 via history (dist=95px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5231 retroactively linked to person_id=5228 via history (dist=1px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P5228 T5231 | coupling=5f cos=0.97 | intent=0.00 rest=1f | frames=[10, 41]
+         evidence: coupling=0.93 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=5269 retroactively linked to person_id=5228 via history (dist=157px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5315 retroactively linked to person_id=5228 via history (dist=99px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P5228 T5315 | coupling=30f cos=0.89 | intent=0.00 rest=3f | frames=[207, 291]
+         evidence: coupling=0.89 diverge=0.83 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=5341 retroactively linked to person_id=5228 via history (dist=140px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P5228 T5313 | coupling=6f cos=1.00 | intent=0.00 rest=3f | frames=[204, 452]
+         evidence: coupling=0.92 diverge=0.81 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[72/150] Running: vid0092.mp4
+[73/150] Running: vid0093.mp4
+[74/150] Running: vid0095.mp4
+[75/150] Running: vid0096.mp4
+[Layer4-FIX7] obj_id=5398 retroactively linked to person_id=5396 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P5396 T5398 | coupling=24f cos=1.00 | intent=0.00 rest=3f | frames=[24, 57]
+         evidence: coupling=0.85 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[76/150] Running: vid0097.mp4
+[Layer4-FIX7] obj_id=5427 retroactively linked to person_id=5425 via history (dist=85px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P5425 T5427 | coupling=10f cos=1.00 | intent=0.00 rest=0f | frames=[43, 80]
+         evidence: coupling=0.95 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=5454 retroactively linked to person_id=5420 via history (dist=16px). State → POSSESSED, held_frames=15
+[77/150] Running: vid0098.mp4
+[BinTracker] 📍 Bin registered — ID #9047 bottom-center=(904.8526611328125, 586.56982421875)
+[BinTracker] 🗑️  Bin flagged — ID #9047 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9048 bottom-center=(886.0972290039062, 672.030029296875)
+[BinTracker] 🗑️  Bin flagged — ID #9048 (total flagged: 2)
+[78/150] Running: vid0099.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P5465 T5467 | coupling=8f cos=0.96 | intent=0.00 rest=0f | frames=[23, 57]
+         evidence: coupling=0.83 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P5465 T5470 | coupling=39f cos=1.00 | intent=0.00 rest=3f | frames=[29, 97]
+         evidence: coupling=0.96 diverge=0.74 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P5465 T5472 | coupling=7f cos=1.00 | intent=0.00 rest=3f | frames=[106, 121]
+         evidence: coupling=0.98 diverge=0.73 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P5465 T5478 | coupling=6f cos=0.99 | intent=0.00 rest=0f | frames=[185, 215]
+         evidence: coupling=0.99 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[79/150] Running: vid0100.mp4
+[80/150] Running: vid0102.mp4
+[81/150] Running: vid0103.mp4
+[BinTracker] 📍 Bin registered — ID #9049 bottom-center=(954.897705078125, 648.1040649414062)
+[BinTracker] 🗑️  Bin flagged — ID #9049 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9050 bottom-center=(1092.006591796875, 674.5479125976562)
+[BinTracker] 🗑️  Bin flagged — ID #9050 (total flagged: 2)
+[Layer4] Event: legal_disposal | Conf: 0.95 | bin#9049 bottom_dist=268px <= 400px
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.78 | P5491 T5492 | coupling=0f cos=0.00 | intent=0.41 rest=2f | frames=[220, 253]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  bin#9049 bottom_dist=268px <= 400px | L5_bin_near dist=0px bin#9049
+[82/150] Running: vid0104.mp4
+[83/150] Running: vid0105.mp4
+[84/150] Running: vid0106.mp4
+[Layer4-FIX7] obj_id=5519 retroactively linked to person_id=5522 via history (dist=52px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5519 retroactively linked to person_id=5510 via history (dist=54px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5520 retroactively linked to person_id=5522 via history (dist=155px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5646 retroactively linked to person_id=5514 via history (dist=96px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5646 retroactively linked to person_id=5523 via history (dist=61px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5688 retroactively linked to person_id=5510 via history (dist=67px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5521 retroactively linked to person_id=5674 via history (dist=33px). State → POSSESSED, held_frames=15
+[85/150] Running: vid0107.mp4
+[BinTracker] 📍 Bin registered — ID #9051 bottom-center=(334.7913513183594, 346.2225341796875)
+[BinTracker] 🗑️  Bin flagged — ID #9051 (total flagged: 1)
+[86/150] Running: vid0108.mp4
+[87/150] Running: vid0109.mp4
+[BinTracker] 📍 Bin registered — ID #9052 bottom-center=(489.2226257324219, 1067.8502197265625)
+[BinTracker] 🗑️  Bin flagged — ID #9052 (total flagged: 1)
+[88/150] Running: vid0110.mp4
+[Layer4-FIX7] obj_id=5752 retroactively linked to person_id=5742 via history (dist=59px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5752 retroactively linked to person_id=5757 via history (dist=48px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5763 retroactively linked to person_id=5761 via history (dist=16px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9053 bottom-center=(1124.554443359375, 429.9691467285156)
+[BinTracker] 🗑️  Bin flagged — ID #9053 (total flagged: 1)
+[Layer4-FIX7] obj_id=5768 retroactively linked to person_id=5767 via history (dist=23px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=155px bin#9053
+[89/150] Running: vid0111.mp4
+[BinTracker] 📍 Bin registered — ID #9054 bottom-center=(386.5258483886719, 880.1270751953125)
+[BinTracker] 🗑️  Bin flagged — ID #9054 (total flagged: 1)
+[Layer4-FIX7] obj_id=5775 retroactively linked to person_id=5769 via history (dist=49px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.58 | P5769 T5776 | coupling=7f cos=1.00 | intent=0.34 rest=3f | frames=[77, 106]
+         evidence: coupling=0.94 diverge=0.44 rest=1.00 bin=0.25
+         reasons:  l5_independent_detection | L5_bin_near dist=374px bin#9054
+[Layer4-FIX7] obj_id=5779 retroactively linked to person_id=5769 via history (dist=32px). State → POSSESSED, held_frames=15
+[90/150] Running: vid0113.mp4
+[91/150] Running: vid0116.mp4
+[BinTracker] 📍 Bin registered — ID #9055 bottom-center=(948.8944702148438, 1069.1861572265625)
+[BinTracker] 🗑️  Bin flagged — ID #9055 (total flagged: 1)
+[92/150] Running: vid0118.mp4
+[BinTracker] 📍 Bin registered — ID #9056 bottom-center=(1562.906982421875, 1079.53955078125)
+[BinTracker] 🗑️  Bin flagged — ID #9056 (total flagged: 1)
+[93/150] Running: vid0119.mp4
+[BinTracker] 📍 Bin registered — ID #9057 bottom-center=(219.8604736328125, 643.7554321289062)
+[BinTracker] 🗑️  Bin flagged — ID #9057 (total flagged: 1)
+[Layer4-FIX7] obj_id=5882 retroactively linked to person_id=5863 via history (dist=42px). State → POSSESSED, held_frames=15
+[94/150] Running: vid0120.mp4
+[BinTracker] 📍 Bin registered — ID #9058 bottom-center=(275.8901672363281, 666.2481079101562)
+[BinTracker] 🗑️  Bin flagged — ID #9058 (total flagged: 1)
+[95/150] Running: vid0122.mp4
+[Layer4-FIX7] obj_id=5956 retroactively linked to person_id=5938 via history (dist=152px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5956 retroactively linked to person_id=5930 via history (dist=134px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5956 retroactively linked to person_id=5931 via history (dist=153px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5934 retroactively linked to person_id=6066 via history (dist=69px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=5934 retroactively linked to person_id=6099 via history (dist=59px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6147 retroactively linked to person_id=6066 via history (dist=32px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6142 retroactively linked to person_id=6076 via history (dist=93px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6142 retroactively linked to person_id=6173 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6142 retroactively linked to person_id=6066 via history (dist=74px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6142 retroactively linked to person_id=6195 via history (dist=115px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6142 retroactively linked to person_id=6197 via history (dist=72px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6203 retroactively linked to person_id=6197 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6221 retroactively linked to person_id=6223 via history (dist=100px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6268 retroactively linked to person_id=5930 via history (dist=117px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | no_bin held=15f post=3f
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P5930 T6268 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[1115, 1122]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=15f post=3f | L5_weak_coupling coupling=0f (l4_confirmed)
+[Layer4-FIX7] obj_id=6268 retroactively linked to person_id=6266 via history (dist=150px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6268 retroactively linked to person_id=6254 via history (dist=118px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6303 retroactively linked to person_id=6288 via history (dist=70px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6268 retroactively linked to person_id=6302 via history (dist=126px). State → POSSESSED, held_frames=15
+[96/150] Running: vid0123.mp4
+[97/150] Running: vid0125.mp4
+[Layer4-FIX7] obj_id=6394 retroactively linked to person_id=6389 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6405 retroactively linked to person_id=6389 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6409 retroactively linked to person_id=6389 via history (dist=35px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6410 retroactively linked to person_id=6389 via history (dist=28px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9059 bottom-center=(277.8348693847656, 138.90359497070312)
+[BinTracker] 🗑️  Bin flagged — ID #9059 (total flagged: 1)
+[98/150] Running: vid0126.mp4
+[Layer4-FIX7] obj_id=6642 retroactively linked to person_id=6575 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6548 retroactively linked to person_id=6544 via history (dist=126px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | no_bin held=15f post=3f
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P6544 T6548 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[179, 186]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=15f post=3f | L5_weak_coupling coupling=0f (l4_confirmed)
+[Layer4-FIX7] obj_id=6680 retroactively linked to person_id=6544 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P6575 T6675 | coupling=11f cos=1.00 | intent=0.00 rest=1f | frames=[256, 293]
+         evidence: coupling=0.90 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=6681 retroactively linked to person_id=6575 via history (dist=31px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6680 retroactively linked to person_id=6575 via history (dist=143px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.49 | P6575 T6687 | coupling=6f cos=1.00 | intent=0.00 rest=1f | frames=[374, 415]
+         evidence: coupling=0.87 diverge=0.48 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=6680 retroactively linked to person_id=6706 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6550 retroactively linked to person_id=6723 via history (dist=127px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6729 retroactively linked to person_id=6706 via history (dist=63px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6729 retroactively linked to person_id=6716 via history (dist=74px). State → POSSESSED, held_frames=15
+[99/150] Running: vid0128.mp4
+[BinTracker] 📍 Bin registered — ID #9060 bottom-center=(1300.0662841796875, 487.96356201171875)
+[BinTracker] 🗑️  Bin flagged — ID #9060 (total flagged: 1)
+[100/150] Running: vid0129.mp4
+[101/150] Running: vid0130.mp4
+[Layer4-FIX7] obj_id=6743 retroactively linked to person_id=6738 via history (dist=67px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6743 retroactively linked to person_id=6747 via history (dist=38px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6761 retroactively linked to person_id=6738 via history (dist=36px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6771 retroactively linked to person_id=6800 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6771 retroactively linked to person_id=6738 via history (dist=26px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6819 retroactively linked to person_id=6738 via history (dist=6px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6819 retroactively linked to person_id=6800 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=6824 retroactively linked to person_id=6787 via history (dist=15px). State → POSSESSED, held_frames=15
+[102/150] Running: vid0131.mp4
+[BinTracker] 📍 Bin registered — ID #9061 bottom-center=(98.97003173828125, 717.572265625)
+[BinTracker] 🗑️  Bin flagged — ID #9061 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9062 bottom-center=(905.740966796875, 684.1150512695312)
+[BinTracker] 🗑️  Bin flagged — ID #9062 (total flagged: 2)
+[103/150] Running: vid0132.mp4
+[104/150] Running: vid0133.mp4
+[105/150] Running: vid0135.mp4
+[BinTracker] 📍 Bin registered — ID #9063 bottom-center=(221.93511962890625, 163.4898223876953)
+[BinTracker] 🗑️  Bin flagged — ID #9063 (total flagged: 1)
+[Layer4-FIX7] obj_id=6947 retroactively linked to person_id=6863 via history (dist=12px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9064 bottom-center=(1215.188232421875, 191.7733917236328)
+[BinTracker] 🗑️  Bin flagged — ID #9064 (total flagged: 2)
+[Layer4-FIX7] obj_id=6952 retroactively linked to person_id=6899 via history (dist=15px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=139px bin#9064
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.88 | P6899 T6952 | coupling=3f cos=0.97 | intent=0.77 rest=2f | frames=[264, 272]
+         evidence: coupling=0.89 diverge=1.00 rest=0.50 bin=0.98
+         reasons:  released_near_bin dist=139px bin#9064 | L5_bin_near dist=11px bin#9064
+[Layer4-FIX7] obj_id=6962 retroactively linked to person_id=6899 via history (dist=17px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=26px bin#9064
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.90 | P6899 T6962 | coupling=1f cos=1.00 | intent=0.23 rest=2f | frames=[304, 312]
+         evidence: coupling=1.00 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=26px bin#9064 | L5_bin_near dist=0px bin#9064
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P6863 T6947 | coupling=69f cos=1.00 | intent=0.41 rest=3f | frames=[226, 318]
+         evidence: coupling=0.99 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=6982 retroactively linked to person_id=6975 via history (dist=11px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=138px bin#9064
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.71 | P6975 T6982 | coupling=0f cos=0.00 | intent=0.49 rest=2f | frames=[353, 362]
+         evidence: coupling=0.00 diverge=0.72 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=138px bin#9064 | L5_bin_near dist=0px bin#9064
+[Layer4-FIX7] obj_id=7034 retroactively linked to person_id=7020 via history (dist=2px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.52 | P7020 T7034 | coupling=24f cos=1.00 | intent=0.18 rest=3f | frames=[551, 593]
+         evidence: coupling=0.95 diverge=0.62 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9065 bottom-center=(865.0155029296875, 707.7549438476562)
+[BinTracker] 🗑️  Bin flagged — ID #9065 (total flagged: 3)
+[Layer4-FIX7] obj_id=7093 retroactively linked to person_id=7078 via history (dist=20px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=177px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.86 | P7078 T7093 | coupling=4f cos=1.00 | intent=0.03 rest=2f | frames=[748, 759]
+         evidence: coupling=0.96 diverge=0.72 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=177px bin#9065 | L5_bin_near dist=0px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.63 | P7080 T7084 | coupling=6f cos=1.00 | intent=0.00 rest=1f | frames=[741, 788]
+         evidence: coupling=0.95 diverge=0.94 rest=0.50 bin=0.57
+         reasons:  l5_independent_detection | L5_bin_near dist=214px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.64 | P7078 T7081 | coupling=44f cos=1.00 | intent=0.00 rest=3f | frames=[740, 815]
+         evidence: coupling=0.98 diverge=0.72 rest=0.50 bin=0.79
+         reasons:  l5_independent_detection | L5_bin_near dist=104px bin#9065
+[Layer4-FIX7] obj_id=7111 retroactively linked to person_id=7106 via history (dist=29px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=146px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.88 | P7106 T7111 | coupling=3f cos=0.98 | intent=0.64 rest=0f | frames=[816, 824]
+         evidence: coupling=0.87 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=146px bin#9065 | L5_bin_near dist=0px bin#9065
+[Layer4-FIX7] obj_id=7157 retroactively linked to person_id=7144 via history (dist=11px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=188px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.90 | P7144 T7157 | coupling=5f cos=1.00 | intent=0.10 rest=0f | frames=[897, 904]
+         evidence: coupling=0.98 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=188px bin#9065 | L5_bin_near dist=0px bin#9065
+[Layer4-FIX7] obj_id=7164 retroactively linked to person_id=7152 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=193px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.90 | P7152 T7164 | coupling=3f cos=1.00 | intent=0.00 rest=0f | frames=[911, 919]
+         evidence: coupling=0.99 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=193px bin#9065 | L5_bin_near dist=0px bin#9065
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.68 | P7122 T7157 | coupling=7f cos=1.00 | intent=0.02 rest=3f | frames=[930, 948]
+         evidence: coupling=0.91 diverge=1.00 rest=0.50 bin=0.93
+         reasons:  l5_independent_detection | L5_bin_near dist=33px bin#9065
+[BinTracker] 📍 Bin registered — ID #9066 bottom-center=(904.669677734375, 194.90817260742188)
+[BinTracker] 🗑️  Bin flagged — ID #9066 (total flagged: 4)
+[Layer4-FIX7] obj_id=7210 retroactively linked to person_id=7074 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7263 retroactively linked to person_id=7246 via history (dist=26px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7276 retroactively linked to person_id=7246 via history (dist=17px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7283 retroactively linked to person_id=7246 via history (dist=10px). State → POSSESSED, held_frames=15
+[106/150] Running: vid0136.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P7302 T7313 | coupling=5f cos=1.00 | intent=0.00 rest=3f | frames=[246, 264]
+         evidence: coupling=0.91 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=7323 retroactively linked to person_id=7320 via history (dist=39px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7310 retroactively linked to person_id=7320 via history (dist=74px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7329 retroactively linked to person_id=7320 via history (dist=41px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P7302 T7327 | coupling=9f cos=0.85 | intent=0.00 rest=3f | frames=[317, 339]
+         evidence: coupling=0.73 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[107/150] Running: vid0137.mp4
+[BinTracker] 📍 Bin registered — ID #9067 bottom-center=(102.3810806274414, 203.17559814453125)
+[BinTracker] 🗑️  Bin flagged — ID #9067 (total flagged: 1)
+[Layer4-FIX7] obj_id=7380 retroactively linked to person_id=7350 via history (dist=4px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=88px bin#9067
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.75 | P7350 T7380 | coupling=13f cos=0.00 | intent=0.43 rest=2f | frames=[87, 104]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=88px bin#9067 | L5_bin_near dist=0px bin#9067
+[Layer4-FIX7] obj_id=7380 retroactively linked to person_id=7367 via history (dist=62px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=90px bin#9067
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.75 | P7367 T7380 | coupling=0f cos=0.00 | intent=0.18 rest=2f | frames=[112, 116]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  released_near_bin dist=90px bin#9067 | L5_bin_near dist=0px bin#9067
+[Layer4-FIX7] obj_id=7462 retroactively linked to person_id=7453 via history (dist=12px). State → POSSESSED, held_frames=15
+[108/150] Running: vid0138.mp4
+[BinTracker] 📍 Bin registered — ID #9068 bottom-center=(182.64930725097656, 1078.6895751953125)
+[BinTracker] 🗑️  Bin flagged — ID #9068 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9069 bottom-center=(1023.6749267578125, 1079.56787109375)
+[BinTracker] 🗑️  Bin flagged — ID #9069 (total flagged: 2)
+[BinTracker] 📍 Bin registered — ID #9070 bottom-center=(715.8009033203125, 1078.6248779296875)
+[BinTracker] 🗑️  Bin flagged — ID #9070 (total flagged: 3)
+[BinTracker] 📍 Bin registered — ID #9071 bottom-center=(1550.537841796875, 935.0029296875)
+[BinTracker] 🗑️  Bin flagged — ID #9071 (total flagged: 4)
+[BinTracker] 📍 Bin registered — ID #9072 bottom-center=(792.9323120117188, 946.0889282226562)
+[BinTracker] 🗑️  Bin flagged — ID #9072 (total flagged: 5)
+[Layer4-FIX7] obj_id=7582 retroactively linked to person_id=7562 via history (dist=89px). State → POSSESSED, held_frames=15
+[109/150] Running: vid0139.mp4
+[Layer4-FIX7] obj_id=7587 retroactively linked to person_id=7586 via history (dist=58px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7592 retroactively linked to person_id=7586 via history (dist=57px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7596 retroactively linked to person_id=7586 via history (dist=47px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P7586 T7598 | coupling=28f cos=1.00 | intent=0.00 rest=3f | frames=[51, 109]
+         evidence: coupling=0.96 diverge=0.61 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[110/150] Running: vid0140.mp4
+[111/150] Running: vid0142.mp4
+[112/150] Running: vid0144.mp4
+[BinTracker] 📍 Bin registered — ID #9073 bottom-center=(67.37599182128906, 477.5540466308594)
+[BinTracker] 🗑️  Bin flagged — ID #9073 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9074 bottom-center=(787.9157104492188, 476.03118896484375)
+[BinTracker] 🗑️  Bin flagged — ID #9074 (total flagged: 2)
+[113/150] Running: vid0145.mp4
+[BinTracker] 📍 Bin registered — ID #9075 bottom-center=(251.09361267089844, 121.23491668701172)
+[BinTracker] 🗑️  Bin flagged — ID #9075 (total flagged: 1)
+[Layer4-FIX7] obj_id=7969 retroactively linked to person_id=7963 via history (dist=14px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=140px bin#9075
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.75 | P7963 T7969 | coupling=13f cos=0.00 | intent=0.23 rest=2f | frames=[342, 359]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.99
+         reasons:  released_near_bin dist=140px bin#9075 | L5_bin_near dist=7px bin#9075
+[BinTracker] 📍 Bin registered — ID #9076 bottom-center=(142.61024475097656, 208.09768676757812)
+[BinTracker] 🗑️  Bin flagged — ID #9076 (total flagged: 2)
+[114/150] Running: vid0146.mp4
+[BinTracker] 📍 Bin registered — ID #9077 bottom-center=(354.1798400878906, 474.23138427734375)
+[BinTracker] 🗑️  Bin flagged — ID #9077 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9078 bottom-center=(70.8169937133789, 83.25947570800781)
+[BinTracker] 🗑️  Bin flagged — ID #9078 (total flagged: 2)
+[Layer4-FIX7] obj_id=7994 retroactively linked to person_id=7977 via history (dist=52px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=7993 retroactively linked to person_id=7977 via history (dist=14px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8008 retroactively linked to person_id=7977 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.67 | P7970 T7999 | coupling=11f cos=0.78 | intent=0.30 rest=1f | frames=[918, 961]
+         evidence: coupling=0.78 diverge=1.00 rest=0.50 bin=1.00
+         reasons:  l5_independent_detection | L5_bin_near dist=0px bin#9077
+[BinTracker] 📍 Bin registered — ID #9079 bottom-center=(98.2129135131836, 207.5883026123047)
+[BinTracker] 🗑️  Bin flagged — ID #9079 (total flagged: 3)
+[115/150] Running: vid0147.mp4
+[BinTracker] 📍 Bin registered — ID #9080 bottom-center=(1058.843994140625, 667.4111328125)
+[BinTracker] 🗑️  Bin flagged — ID #9080 (total flagged: 1)
+[Layer4-FIX7] obj_id=8020 retroactively linked to person_id=8019 via history (dist=16px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=28px bin#9080
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.71 | P8019 T8020 | coupling=1f cos=0.00 | intent=0.34 rest=2f | frames=[283, 302]
+         evidence: coupling=0.00 diverge=0.77 rest=0.50 bin=0.91
+         reasons:  released_near_bin dist=28px bin#9080 | L5_bin_near dist=45px bin#9080
+[Layer4-FIX7] obj_id=8022 retroactively linked to person_id=8019 via history (dist=46px). State → POSSESSED, held_frames=15
+[Layer4] Event: legal_disposal | Conf: 0.90 | released_near_bin dist=185px bin#9080
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.83 | P8019 T8022 | coupling=1f cos=0.72 | intent=0.18 rest=2f | frames=[307, 326]
+         evidence: coupling=0.72 diverge=1.00 rest=0.50 bin=0.77
+         reasons:  released_near_bin dist=185px bin#9080 | L5_bin_near dist=113px bin#9080
+[BinTracker] 📍 Bin registered — ID #9081 bottom-center=(1046.1754150390625, 788.6072387695312)
+[BinTracker] 🗑️  Bin flagged — ID #9081 (total flagged: 2)
+[116/150] Running: vid0148.mp4
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8024 T8025 | coupling=8f cos=1.00 | intent=0.00 rest=0f | frames=[17, 49]
+         evidence: coupling=0.97 diverge=0.71 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=8040 retroactively linked to person_id=8024 via history (dist=7px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8024 T8037 | coupling=9f cos=1.00 | intent=0.00 rest=0f | frames=[97, 138]
+         evidence: coupling=0.89 diverge=0.74 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8024 T8040 | coupling=13f cos=1.00 | intent=0.00 rest=2f | frames=[109, 156]
+         evidence: coupling=0.94 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=8049 retroactively linked to person_id=8024 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P8024 T8049 | coupling=11f cos=1.00 | intent=0.00 rest=3f | frames=[187, 205]
+         evidence: coupling=0.99 diverge=0.71 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=8053 retroactively linked to person_id=8050 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8057 retroactively linked to person_id=8024 via history (dist=65px). State → POSSESSED, held_frames=15
+[117/150] Running: vid0149.mp4
+[118/150] Running: vid0150.mp4
+[Layer4-FIX7] obj_id=8393 retroactively linked to person_id=8390 via history (dist=18px). State → POSSESSED, held_frames=15
+[119/150] Running: vid0151.mp4
+[BinTracker] 📍 Bin registered — ID #9082 bottom-center=(79.76094055175781, 715.94091796875)
+[BinTracker] 🗑️  Bin flagged — ID #9082 (total flagged: 1)
+[120/150] Running: vid0152.mp4
+[121/150] Running: vid0156.mp4
+[BinTracker] 📍 Bin registered — ID #9083 bottom-center=(614.1073608398438, 689.9301147460938)
+[BinTracker] 🗑️  Bin flagged — ID #9083 (total flagged: 1)
+[122/150] Running: vid0157.mp4
+[123/150] Running: vid0158.mp4
+[Layer4-FIX7] obj_id=8462 retroactively linked to person_id=8460 via history (dist=62px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8470 retroactively linked to person_id=8460 via history (dist=65px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8475 retroactively linked to person_id=8459 via history (dist=21px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8476 retroactively linked to person_id=8459 via history (dist=45px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8482 retroactively linked to person_id=8459 via history (dist=25px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8492 retroactively linked to person_id=8459 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8460 T8470 | coupling=13f cos=1.00 | intent=0.00 rest=0f | frames=[33, 72]
+         evidence: coupling=0.98 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8459 T8476 | coupling=5f cos=0.98 | intent=0.00 rest=0f | frames=[45, 82]
+         evidence: coupling=0.93 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P8459 T8492 | coupling=15f cos=1.00 | intent=0.00 rest=1f | frames=[67, 109]
+         evidence: coupling=0.92 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=8498 retroactively linked to person_id=8497 via history (dist=54px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P8497 T8498 | coupling=14f cos=1.00 | intent=0.00 rest=0f | frames=[493, 532]
+         evidence: coupling=0.95 diverge=0.78 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[124/150] Running: vid0159.mp4
+[Layer4-FIX7] obj_id=8510 retroactively linked to person_id=8519 via history (dist=73px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8524 retroactively linked to person_id=8507 via history (dist=24px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8541 retroactively linked to person_id=8507 via history (dist=37px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P8507 T8524 | coupling=29f cos=1.00 | intent=0.00 rest=3f | frames=[13, 60]
+         evidence: coupling=0.90 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=8574 retroactively linked to person_id=8506 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8625 retroactively linked to person_id=8592 via history (dist=35px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8510 retroactively linked to person_id=8519 via history (dist=58px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8510 retroactively linked to person_id=8643 via history (dist=159px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9084 bottom-center=(1659.157958984375, 487.3650207519531)
+[BinTracker] 🗑️  Bin flagged — ID #9084 (total flagged: 1)
+[Layer4-FIX7] obj_id=8823 retroactively linked to person_id=8507 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8856 retroactively linked to person_id=8700 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8510 retroactively linked to person_id=8912 via history (dist=71px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8915 retroactively linked to person_id=8643 via history (dist=39px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8510 retroactively linked to person_id=8809 via history (dist=72px). State → POSSESSED, held_frames=15
+[125/150] Running: vid0160.mp4
+[Layer4-FIX7] obj_id=8964 retroactively linked to person_id=8961 via history (dist=26px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=8967 retroactively linked to person_id=8961 via history (dist=8px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P8961 T8970 | coupling=10f cos=1.00 | intent=0.00 rest=3f | frames=[69, 87]
+         evidence: coupling=0.96 diverge=0.70 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P8961 T8979 | coupling=7f cos=1.00 | intent=0.00 rest=1f | frames=[102, 133]
+         evidence: coupling=0.99 diverge=0.71 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[126/150] Running: vid0161.mp4
+[127/150] Running: vid0162.mp4
+[Layer4-FIX7] obj_id=8997 retroactively linked to person_id=8996 via history (dist=34px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P8996 T8997 | coupling=53f cos=1.00 | intent=0.00 rest=0f | frames=[121, 203]
+         evidence: coupling=0.83 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P8996 T9001 | coupling=17f cos=1.00 | intent=0.00 rest=0f | frames=[202, 245]
+         evidence: coupling=0.93 diverge=0.70 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P8996 T9006 | coupling=11f cos=1.00 | intent=0.00 rest=3f | frames=[255, 273]
+         evidence: coupling=0.95 diverge=0.71 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[128/150] Running: vid0164.mp4
+[BinTracker] 📍 Bin registered — ID #9085 bottom-center=(254.38705444335938, 695.5533447265625)
+[BinTracker] 🗑️  Bin flagged — ID #9085 (total flagged: 1)
+[129/150] Running: vid0165.mp4
+[BinTracker] 📍 Bin registered — ID #9086 bottom-center=(1193.534912109375, 198.85284423828125)
+[BinTracker] 🗑️  Bin flagged — ID #9086 (total flagged: 1)
+[130/150] Running: vid0168.mp4
+[131/150] Running: vid0169.mp4
+[Layer4-FIX7] obj_id=9043 retroactively linked to person_id=9038 via history (dist=48px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P9038 T9044 | coupling=5f cos=0.86 | intent=0.00 rest=1f | frames=[641, 735]
+         evidence: coupling=0.77 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[BinTracker] 📍 Bin registered — ID #9087 bottom-center=(659.521728515625, 228.7022247314453)
+[BinTracker] 🗑️  Bin flagged — ID #9087 (total flagged: 1)
+[132/150] Running: vid0170.mp4
+[BinTracker] 📍 Bin registered — ID #9088 bottom-center=(833.2027587890625, 1075.0941162109375)
+[BinTracker] 🗑️  Bin flagged — ID #9088 (total flagged: 1)
+[Layer4-FIX7] obj_id=9062 retroactively linked to person_id=9054 via history (dist=32px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9095 retroactively linked to person_id=9054 via history (dist=63px). State → POSSESSED, held_frames=15
+[133/150] Running: vid0172.mp4
+[134/150] Running: vid0174.mp4
+[Layer4-FIX7] obj_id=9106 retroactively linked to person_id=9101 via history (dist=20px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9141 retroactively linked to person_id=9140 via history (dist=15px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9155 retroactively linked to person_id=9140 via history (dist=9px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9161 retroactively linked to person_id=9140 via history (dist=4px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9160 retroactively linked to person_id=9140 via history (dist=3px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9162 retroactively linked to person_id=9140 via history (dist=4px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.57 | P9140 T9162 | coupling=32f cos=1.00 | intent=0.00 rest=1f | frames=[844, 901]
+         evidence: coupling=1.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=9137 retroactively linked to person_id=9190 via history (dist=78px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9192 retroactively linked to person_id=9190 via history (dist=13px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9203 retroactively linked to person_id=9140 via history (dist=15px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.59 | P9140 T9203 | coupling=10f cos=0.77 | intent=0.00 rest=3f | frames=[1014, 1030]
+         evidence: coupling=0.77 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=9220 retroactively linked to person_id=9140 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9226 retroactively linked to person_id=9140 via history (dist=126px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9231 retroactively linked to person_id=9224 via history (dist=12px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9231 retroactively linked to person_id=9097 via history (dist=11px). State → POSSESSED, held_frames=15
+[135/150] Running: vid0175.mp4
+[BinTracker] 📍 Bin registered — ID #9089 bottom-center=(69.74134826660156, 290.7702331542969)
+[BinTracker] 🗑️  Bin flagged — ID #9089 (total flagged: 1)
+[136/150] Running: vid0176.mp4
+[Layer4-FIX7] obj_id=9269 retroactively linked to person_id=9265 via history (dist=10px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9273 retroactively linked to person_id=9267 via history (dist=15px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9371 retroactively linked to person_id=9363 via history (dist=92px). State → POSSESSED, held_frames=15
+[137/150] Running: vid0177.mp4
+[Layer4-FIX7] obj_id=9475 retroactively linked to person_id=9472 via history (dist=87px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9090 bottom-center=(1091.6077880859375, 265.9096984863281)
+[BinTracker] 🗑️  Bin flagged — ID #9090 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9091 bottom-center=(1096.748291015625, 103.807861328125)
+[BinTracker] 🗑️  Bin flagged — ID #9091 (total flagged: 2)
+[138/150] Running: vid0178.mp4
+[BinTracker] 📍 Bin registered — ID #9092 bottom-center=(1262.221923828125, 608.7056274414062)
+[BinTracker] 🗑️  Bin flagged — ID #9092 (total flagged: 1)
+[139/150] Running: vid0179.mp4
+[Layer4-FIX7] obj_id=9503 retroactively linked to person_id=9488 via history (dist=39px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9506 retroactively linked to person_id=9488 via history (dist=36px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P9488 T9522 | coupling=10f cos=0.85 | intent=0.00 rest=3f | frames=[76, 103]
+         evidence: coupling=0.84 diverge=0.71 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=9543 retroactively linked to person_id=9488 via history (dist=65px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.53 | P9529 T9531 | coupling=44f cos=1.00 | intent=0.00 rest=3f | frames=[111, 174]
+         evidence: coupling=0.84 diverge=0.79 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P9488 T9535 | coupling=28f cos=0.91 | intent=0.00 rest=3f | frames=[153, 199]
+         evidence: coupling=0.74 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=9559 retroactively linked to person_id=9488 via history (dist=38px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9561 retroactively linked to person_id=9488 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9562 retroactively linked to person_id=9488 via history (dist=17px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P9488 T9562 | coupling=8f cos=1.00 | intent=0.00 rest=3f | frames=[455, 477]
+         evidence: coupling=0.91 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P9488 T9564 | coupling=20f cos=1.00 | intent=0.00 rest=3f | frames=[468, 507]
+         evidence: coupling=0.92 diverge=0.75 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=9579 retroactively linked to person_id=9488 via history (dist=27px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9593 retroactively linked to person_id=9580 via history (dist=36px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.54 | P9580 T9590 | coupling=14f cos=1.00 | intent=0.00 rest=1f | frames=[583, 632]
+         evidence: coupling=0.94 diverge=0.80 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[140/150] Running: vid0181.mp4
+[141/150] Running: vid0182.mp4
+[Layer4-FIX7] obj_id=9628 retroactively linked to person_id=9745 via history (dist=112px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9628 retroactively linked to person_id=9761 via history (dist=101px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9632 retroactively linked to person_id=9807 via history (dist=146px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9632 retroactively linked to person_id=9745 via history (dist=105px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9628 retroactively linked to person_id=9807 via history (dist=117px). State → POSSESSED, held_frames=15
+[Layer4] Event: illegal_dumping | Conf: 0.88 | no_bin held=101f post=3f
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.61 | P9807 T9632 | coupling=0f cos=0.00 | intent=0.00 rest=2f | frames=[143, 238]
+         evidence: coupling=0.00 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  no_bin held=101f post=3f | L5_weak_coupling coupling=0f (l4_confirmed)
+[Layer4-FIX7] obj_id=9632 retroactively linked to person_id=9903 via history (dist=148px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=9632 retroactively linked to person_id=9933 via history (dist=143px). State → POSSESSED, held_frames=15
+[BinTracker] 📍 Bin registered — ID #9093 bottom-center=(747.2224731445312, 296.44952392578125)
+[BinTracker] 🗑️  Bin flagged — ID #9093 (total flagged: 1)
+[Layer4-FIX7] obj_id=9632 retroactively linked to person_id=10001 via history (dist=142px). State → POSSESSED, held_frames=15
+[142/150] Running: vid0183.mp4
+[Layer4-FIX7] obj_id=10055 retroactively linked to person_id=10053 via history (dist=99px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10056 retroactively linked to person_id=10053 via history (dist=44px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.55 | P10053 T10054 | coupling=5f cos=1.00 | intent=0.00 rest=0f | frames=[10, 47]
+         evidence: coupling=0.94 diverge=0.90 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[143/150] Running: vid0184.mp4
+[BinTracker] 📍 Bin registered — ID #9094 bottom-center=(275.20269775390625, 222.91744995117188)
+[BinTracker] 🗑️  Bin flagged — ID #9094 (total flagged: 1)
+[Layer4-FIX7] obj_id=10087 retroactively linked to person_id=10066 via history (dist=31px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.58 | P10066 T10087 | coupling=21f cos=1.00 | intent=0.07 rest=3f | frames=[96, 135]
+         evidence: coupling=0.89 diverge=1.00 rest=0.50 bin=0.15
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=10100 retroactively linked to person_id=10064 via history (dist=33px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10107 retroactively linked to person_id=10066 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10116 retroactively linked to person_id=10066 via history (dist=16px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10125 retroactively linked to person_id=10066 via history (dist=30px). State → POSSESSED, held_frames=15
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P10066 T10125 | coupling=110f cos=1.00 | intent=0.00 rest=3f | frames=[280, 406]
+         evidence: coupling=0.92 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.56 | P10065 T10152 | coupling=7f cos=1.00 | intent=0.00 rest=3f | frames=[400, 419]
+         evidence: coupling=0.93 diverge=1.00 rest=0.50 bin=0.00
+         reasons:  l5_independent_detection
+[Layer5] 🚨 VIOLATION | illegal_dumping | conf=0.62 | P10065 T10155 | coupling=7f cos=1.00 | intent=0.00 rest=3f | frames=[415, 429]
+         evidence: coupling=0.96 diverge=1.00 rest=1.00 bin=0.00
+         reasons:  l5_independent_detection
+[Layer4-FIX7] obj_id=10160 retroactively linked to person_id=10066 via history (dist=63px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10182 retroactively linked to person_id=10066 via history (dist=28px). State → POSSESSED, held_frames=15
+[Layer4-FIX7] obj_id=10191 retroactively linked to person_id=10066 via history (dist=33px). State → POSSESSED, held_frames=15
+[144/150] Running: vid0185.mp4
+[145/150] Running: vid0186.mp4
+[146/150] Running: vid0187.mp4
+[BinTracker] 📍 Bin registered — ID #9095 bottom-center=(209.13502502441406, 368.2432556152344)
+[BinTracker] 🗑️  Bin flagged — ID #9095 (total flagged: 1)
+[Layer4-FIX7] obj_id=10211 retroactively linked to person_id=10203 via history (dist=75px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.57 | P10203 T10211 | coupling=5f cos=0.99 | intent=0.32 rest=0f | frames=[131, 165]
+         evidence: coupling=0.99 diverge=0.73 rest=0.50 bin=0.26
+         reasons:  l5_independent_detection | l5_bin_entry_override: obj_vanished=True coupling=5f peak_cos=0.99 person_approach=0.58 person_bin_dist=576px bin#9095
+[147/150] Running: vid0188.mp4
+[BinTracker] 📍 Bin registered — ID #9096 bottom-center=(1058.9886474609375, 1054.4725341796875)
+[BinTracker] 🗑️  Bin flagged — ID #9096 (total flagged: 1)
+[148/150] Running: vid0190.mp4
+[149/150] Running: vid0191.mp4
+[BinTracker] 📍 Bin registered — ID #9097 bottom-center=(515.1802978515625, 1080.9794921875)
+[BinTracker] 🗑️  Bin flagged — ID #9097 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9098 bottom-center=(111.1799087524414, 1081.30859375)
+[BinTracker] 🗑️  Bin flagged — ID #9098 (total flagged: 2)
+[150/150] Running: vid0193.mp4
+[BinTracker] 📍 Bin registered — ID #9099 bottom-center=(99.32687377929688, 713.4929809570312)
+[BinTracker] 🗑️  Bin flagged — ID #9099 (total flagged: 1)
+[BinTracker] 📍 Bin registered — ID #9100 bottom-center=(685.7394409179688, 425.605712890625)
+[BinTracker] 🗑️  Bin flagged — ID #9100 (total flagged: 2)
+[Layer4-FIX7] obj_id=10677 retroactively linked to person_id=10672 via history (dist=19px). State → POSSESSED, held_frames=15
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.75 | P10672 T10685 | coupling=22f cos=1.00 | intent=0.50 rest=3f | frames=[265, 298]
+         evidence: coupling=1.00 diverge=1.00 rest=1.00 bin=1.00
+         reasons:  l5_independent_detection | L5_bin_near dist=0px bin#9100
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.72 | P10672 T10698 | coupling=9f cos=1.00 | intent=0.64 rest=3f | frames=[320, 339]
+         evidence: coupling=0.91 diverge=0.88 rest=1.00 bin=1.00
+         reasons:  l5_independent_detection | L5_bin_near dist=0px bin#9100
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.67 | P10672 T10708 | coupling=9f cos=0.99 | intent=0.18 rest=1f | frames=[353, 391]
+         evidence: coupling=0.89 diverge=1.00 rest=0.50 bin=0.87
+         reasons:  l5_independent_detection | L5_bin_near dist=65px bin#9100
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.69 | P10672 T10717 | coupling=13f cos=1.00 | intent=0.20 rest=3f | frames=[379, 404]
+         evidence: coupling=0.89 diverge=0.78 rest=1.00 bin=0.83
+         reasons:  l5_independent_detection | L5_bin_near dist=84px bin#9100
+[Layer5] ✅ LEGAL | legal_disposal | conf=0.69 | P10672 T10718 | coupling=5f cos=0.85 | intent=0.11 rest=3f | frames=[383, 406]
+         evidence: coupling=0.76 diverge=1.00 rest=1.00 bin=0.83
+         reasons:  l5_independent_detection | L5_bin_near dist=83px bin#9100
+[Layer4-FIX7] obj_id=10741 retroactively linked to person_id=10672 via history (dist=63px). State → POSSESSED, held_frames=15
+
+=== SUMMARY ===
+{
+  "total": 150,
+  "tp": 23,
+  "tn": 44,
+  "fp": 27,
+  "fn": 56,
+  "accuracy": 0.447,
+  "precision": 0.46,
+  "recall": 0.291,
+  "f1": 0.357,
+  "mean_timestamp_error_s": 5.79,
+  "accuracy_by_time_of_day": {
+    "day": 0.456,
+    "night": 0.357
+  },
+  "accuracy_by_dumping_type": {
+    "static": 0.405,
+    "dynamic": 0.162
+  }
+}
+
+Full report written to baseline_report.json
+[export_feature_csv] WARNING: vid0045.mp4 is a positive video with 2 candidate events but none matched gt_timestamp=16.0 within 3.0s — labeling all events 1 (label-noise risk).
+[export_feature_csv] WARNING: vid0071.mp4 is a positive video with 3 candidate events but none matched gt_timestamp=2.0 within 3.0s — labeling all events 1 (label-noise risk).
+Feature CSV written to features.csv (189 rows)

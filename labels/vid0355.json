@@ -1,0 +1,15 @@
+{
+    "ID": "vid0355.mp4",
+    "Video Info": {
+        "Duration (s)": 28.33,
+        "Resolution": "2560x1920",
+        "Frame Rate (fps)": 15.0,
+        "Time of Day": "day",
+        "Lighting Conditions": "high"
+    },
+    "Dumping": 1,
+    "DumpingDetails": {
+        "Type of Dumping": "static",
+        "Timestamp": 12.0
+    }
+}

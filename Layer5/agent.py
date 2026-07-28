@@ -846,6 +846,16 @@ class DumpingAgent:
             "l4_held":         _parse_held_frames(ev.reason) if ev else 0,
             "frames":          [case.start_frame, frame_idx],
             "reasoning_log":   list(case.reasoning),
+            # ── Evidence components — previously only printed, now persisted
+            # so tools/batch_eval.py can dump a feature CSV for training a
+            # learned scorer (logistic regression) instead of hand-tuning
+            # Layer4/Layer5 threshold constants.
+            "coupling_conf":   round(coupling_conf, 3),
+            "diverge_conf":    round(diverge_conf, 3),
+            "rest_conf":       round(rest_conf, 3),
+            "bin_prox":        round(bin_prox, 3),
+            "l4_conf":         round(l4_conf, 3),
+            "evidence_conf":   round(evidence_conf, 3),
         }
         # ── Guard: trash object already claimed by a prior confirmed violation ──
         if is_violation and case.trash_id in self._used_trash_ids:

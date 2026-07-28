@@ -1,0 +1,15 @@
+{
+    "ID": "vid0452.mp4",
+    "Video Info": {
+        "Duration (s)": 26.48,
+        "Resolution": "1280x720",
+        "Frame Rate (fps)": 23.98,
+        "Time of Day": "night",
+        "Lighting Conditions": "high"
+    },
+    "Dumping": 1,
+    "DumpingDetails": {
+        "Type of Dumping": "static",
+        "Timestamp": 13.0
+    }
+}
