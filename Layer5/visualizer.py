@@ -56,6 +56,22 @@ def draw_l5_verdicts(frame: np.ndarray, results: List[dict]) -> np.ndarray:
 
     return frame
 
+def _wrap_line(line: str, max_w: int, font, scale, thick) -> List[str]:
+    """Word-wrap a single line to fit within max_w pixels."""
+    words = line.split(" ")
+    wrapped, cur = [], ""
+    for w in words:
+        trial = f"{cur} {w}".strip()
+        tw = cv2.getTextSize(trial, font, scale, thick)[0][0]
+        if tw <= max_w or not cur:
+            cur = trial
+        else:
+            wrapped.append(cur)
+            cur = w
+    if cur:
+        wrapped.append(cur)
+    return wrapped
+
 
 def draw_l5_reasoning(frame: np.ndarray, agent: "DumpingAgent") -> np.ndarray:
     """
@@ -80,11 +96,15 @@ def draw_l5_reasoning(frame: np.ndarray, agent: "DumpingAgent") -> np.ndarray:
     if not lines:
         return frame
 
-    box_w = max(
-        cv2.getTextSize(l, _FONT, scale, thick)[0][0] for l in lines
-    ) + pad * 2
+    max_box_w = int(W * 0.9) - pad * 2
+    lines = [wrapped for l in lines for wrapped in _wrap_line(l, max_box_w, _FONT, scale, thick)]
+
+    box_w = min(
+        max(cv2.getTextSize(l, _FONT, scale, thick)[0][0] for l in lines) + pad * 2,
+        int(W * 0.9)
+    )
     box_h  = len(lines) * line_h + pad * 2
-    x0     = (W - box_w) // 2
+    x0 = max(0, (W - box_w) // 2)
     y0     = H - box_h - 10
 
     cv2.rectangle(frame, (x0, y0), (x0+box_w, y0+box_h), _COL_BG, -1)

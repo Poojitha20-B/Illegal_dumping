@@ -1,0 +1,7 @@
+.env
+__pycache__/
+videos/
+*.pyc
+.DS_Store
+venv/
+.venv/

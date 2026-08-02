@@ -421,6 +421,16 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
         delivery_agent.stop()
         print(f"\n[Pipeline] Done. Frames: {frame_idx}")
 
+        # Force-close any cases still open when the video ends — otherwise
+        # a person who never leaves frame for PERSON_GONE_CLOSE_FRAMES
+        # straight (common in short clips) leaves every case open forever
+        # and get_all_results() below returns nothing.
+        try:
+            final_tracked_bins = tracked_bins
+        except NameError:
+            final_tracked_bins = []
+        agent.finalize_all(frame_idx, final_tracked_bins)
+
         all_results = agent.get_all_results()
         if all_results:
             print(f"\n[Layer5] ══ Final Confirmed Events ({len(all_results)}) ══")

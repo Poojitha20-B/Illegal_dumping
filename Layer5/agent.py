@@ -38,6 +38,39 @@ FIX 7 (NEW) — L4 wrongly flags LEGAL disposal as VIOLATION due to
     If the person's last known position was within BIN_PERSON_RADIUS_PX of
     the bin, treat that as an additional corroboration (lowers the approach
     threshold needed).
+
+FIX 8 (NEW) — Confidence-blind state advancement / conclusions handed to LLM
+               as settled fact instead of raw evidence.
+  ROOT CAUSE:
+    Two separate problems compounded:
+      (a) case.obj_trail (and therefore case.final_obj_pos) was fed from
+          the tracker's centroid EVERY frame an object was found, with no
+          check on obj.confidence. A flickering low-confidence detection
+          (e.g. clothing/shadow misclassified as the tracked object) still
+          produced jittery positions that fed diverge_frames (via motion
+          coupling's cosine-similarity check) and rest_frames (via obj_trail
+          velocity in _advance()) — so a case could reach RELEASED/RESTING
+          purely from noise, before the object was ever actually released.
+      (b) Once a trigger fired, TriggerDetector handed the LLM a note like
+          "object came to rest (via_timeout=...)" — a stated CONCLUSION —
+          rather than the raw disputable numbers (position, confidence,
+          distance) a human supervisor would actually look at before
+          agreeing the object had been released.
+
+  FIX:
+    (a) The confidence gate now sits at the point obj_trail gets appended —
+        both in _update_motion_coupling (coupling/divergence) and in the
+        main per-case loop (rest/position tracking) — not only inside
+        TriggerDetector's own redundant velocity-spike check. A detection
+        below cfg.MIN_OBJECT_CONFIDENCE no longer updates the trail; it's
+        treated the same as "object not seen this frame" (obj_missing_frames
+        increments), so it can't silently drive diverge_frames/rest_frames.
+    (b) Trigger notes (divergence_onset, rest_onset, possession_confirmed)
+        now report raw position/confidence/distance evidence instead of
+        asserting "released"/"came to rest" as fact — the LLM is expected
+        to judge for itself whether the evidence actually supports release,
+        the same way FIX text in llm_controller.py's system prompt now says
+        explicitly.
 """
 
 from __future__ import annotations
@@ -52,21 +85,11 @@ import numpy as np
 
 from Layer2.track_state import TrackedObject
 from Layer2.bin_tracker import TrackedBin
-from Layer4.dumping_inference import DumpingEvent
+from Layer4.dumping_inference import DumpingEvent  # kept only for the update() type hint
 import Layer5.config as cfg
+from Layer5.belief_state import BeliefStateManager, PipelineState, KinematicSnapshot
+from Layer5 import llm_controller
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  State machine
-# ══════════════════════════════════════════════════════════════════════════════
-
-class _State(Enum):
-    WATCHING     = auto()
-    POSSESSED    = auto()
-    DIVERGING    = auto()
-    RELEASED     = auto()
-    RESTING      = auto()
-    LOCKED       = auto()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -186,20 +209,6 @@ def _best_bin_hierarchical(
             best_d, best_tb = d, tb
     return best_d, best_tb
 
-def _parse_pair_id(pair_id: str) -> Tuple[int, int]:
-    parts = pair_id.split("_")
-    return int(parts[1]), int(parts[3])
-
-def _parse_held_frames(reason: str) -> int:
-    try:
-        for token in reason.split():
-            if token.startswith("held=") and token.endswith("f"):
-                return int(token[5:-1])
-    except Exception:
-        pass
-    return 0
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  Per-person history
 # ══════════════════════════════════════════════════════════════════════════════
@@ -258,30 +267,35 @@ class _Case:
     trash_id:    int
     start_frame: int
 
-    state:   _State = _State.WATCHING
-    locked:  bool   = False
-    result:  Optional[dict] = None
-
-    coupling_frames:   int   = 0
-    coupling_scores:   List[float] = field(default_factory=list)
-    diverge_frames:    int   = 0
-    diverge_scores:    List[float] = field(default_factory=list)
-
+    # Per-frame data — updated every frame this pair is tracked.
     obj_trail:         deque = field(default_factory=lambda: deque(maxlen=40))
     person_trail_snap: deque = field(default_factory=lambda: deque(maxlen=40))
-    rest_frames:       int   = 0
-    post_release_frames: int = 0
-
-    rest_via_timeout:  bool  = False
-
-    obj_missing_frames: int  = 0
-
+    coupling_scores:   List[float] = field(default_factory=list)
     peak_coupling:     float = 0.0
-    release_clarity:   float = 0.0
+
+    # Object tracking
+    obj_missing_frames: int = 0
     final_obj_pos:     Optional[Tuple[float, float]] = None
+    # FIX 8: last object-detection confidence actually used to update the
+    # trail (None while the object hasn't been seen at trustworthy
+    # confidence yet). Kept alongside final_obj_pos so the kinematic
+    # snapshots can report "how sure were we about this position" rather
+    # than only the position itself.
+    final_obj_confidence: Optional[float] = None
 
-    stored_l4_event:   Optional[DumpingEvent] = None
+    # Closure tracking — replaces the old state machine. The window closes
+    # (and the single final LLM call fires) when person_gone_frames or
+    # obj_missing_frames crosses the thresholds in config.py.
+    person_gone_frames: int = 0
+    closed:  bool = False
+    result:  Optional[dict] = None
 
+    # Whether a bin was visible in ANY frame during this case's lifetime —
+    # tracked_bins passed to _finalise_with_llm() only reflects the FINAL
+    # frame, so a bin seen earlier and later occluded/out of view would
+    # otherwise be reported to the LLM as "no bin ever present" when one
+    # genuinely was.
+    bins_were_present: bool = False
     reasoning: List[str] = field(default_factory=list)
     frames_since_update: int = 0
 
@@ -291,6 +305,8 @@ class _Case:
     def last_reason(self, n: int = 3) -> str:
         return " | ".join(self.reasoning[-n:]) if self.reasoning else ""
 
+    def last_reason_str(self, n: int = 2) -> str:
+        return " | ".join(self.reasoning[-n:]) if self.reasoning else ""
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Main Agent
@@ -309,80 +325,207 @@ class DumpingAgent:
         self.active_cases:  List[_Case]    = []
         self.frame_signals: Dict[str, str] = {}
 
+        # LLM is the sole decision-maker now — one call per case, made
+        # from _finalise_with_llm() when the monitoring window closes.
+        # No more TriggerDetector (no intermediate calls to trigger) and
+        # no more _llm_disabled fallback flag (no heuristic path to fall
+        # back to — see call_agent_final()'s own error handling instead).
+        self._beliefs  = BeliefStateManager()
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def update(
-        self,
-        frame_idx:    int,
-        tracked_objs: List[TrackedObject],
-        tracked_bins: List[TrackedBin],
-        l4_events:    List[DumpingEvent],
-    ) -> List[dict]:
+    self,
+    frame_idx:    int,
+    tracked_objs: List[TrackedObject],
+    tracked_bins: List[TrackedBin],
+    l4_events:    List[DumpingEvent],
+) -> List[dict]:
+        # `l4_events` kept in the signature for call-site compatibility
+        # (run_pipeline.py still passes it) but is no longer consumed anywhere
+        # in this method. L4 is fully dropped from Layer 5 — the LLM is the
+        # sole decision-maker now, reasoning over raw kinematics only.
 
         self._update_person_histories(tracked_objs)
         self._update_motion_coupling(tracked_objs, frame_idx)
         self._age_cases()
         self.frame_signals = {}
 
+        # Frame's currently-visible persons — used below to drive
+        # person_gone_frames per case (replaces the old per-frame presence
+        # check that used to live inside TriggerDetector.check()).
+        visible_person_ids = {
+            o.track_id for o in tracked_objs if o.class_name == "person"
+        }
+
         new_verdicts: List[dict] = []
 
-        for ev in l4_events:
-            pid, tid = _parse_pair_id(ev.pair_id)
-            case     = self._get_or_create(ev.pair_id, pid, tid, frame_idx)
-            case.frames_since_update = 0
-            if ev.event != "pending" and case.stored_l4_event is None:
-                case.stored_l4_event = ev
-                case.log(f"l4_stored: {ev.event} conf={ev.confidence:.2f}")
+        # NOTE: case creation now happens ONLY inside _update_motion_coupling
+        # (via its own _get_or_create call) — there is no more l4_events loop
+        # seeding cases, since L4 is dropped.
 
         for pair_id, case in list(self._cases.items()):
-            if case.locked:
+            if case.closed:
                 continue
 
             ph = self._persons.get(case.person_id)
 
             if self._is_ghost(case, ph):
-                info = (f"frames={ph.frames} move={ph.movement:.0f}px "
-                        f"coupling={case.coupling_frames}f") if ph else "unseen"
                 continue
 
             obj = self._find_obj(case.trash_id, tracked_objs)
-            if obj is not None:
+
+            # FIX 8a: confidence gate before trusting a detection's centroid
+            # for trail/velocity purposes — unchanged from before.
+            obj_confidence_ok = obj is not None and obj.confidence >= cfg.MIN_OBJECT_CONFIDENCE
+            if obj_confidence_ok:
                 pos = _centroid(obj.bbox)
                 case.obj_trail.append(pos)
                 case.final_obj_pos = pos
+                case.final_obj_confidence = obj.confidence
                 case.obj_missing_frames = 0
                 if ph and ph.last_pos:
                     case.person_trail_snap.append(ph.last_pos)
             else:
-                case.obj_missing_frames += 1
-                if (case.state == _State.POSSESSED
-                        and case.obj_missing_frames >= cfg.OFFSCREEN_RELEASE_FRAMES):
-                    case.state = _State.RELEASED
-                    case.post_release_frames = 0
-                    case.rest_via_timeout = True
+                if obj is not None:
                     case.log(
-                        f"offscreen_release missing={case.obj_missing_frames}f "
-                        f"coupling={case.coupling_frames}f"
+                        f"L5_low_conf_position_ignored obj_conf={obj.confidence:.2f} "
+                        f"< min={cfg.MIN_OBJECT_CONFIDENCE:.2f} (not trusted for trail)"
                     )
+                case.obj_missing_frames += 1
+                # No more _State.POSSESSED / offscreen_release transition —
+                # obj_missing_frames itself is now one of the two closure
+                # signals checked below, so nothing further to do here.
 
-            verdict = self._advance(case, tracked_bins, frame_idx, ph)
-            if verdict:
-                new_verdicts.append(verdict)
+            # ── Closure signal 1: person gone ────────────────────────────────
+            if case.person_id in visible_person_ids:
+                case.person_gone_frames = 0
+            else:
+                case.person_gone_frames += 1
 
-            self.frame_signals[pair_id] = (
-                f"{case.state.name} | "
-                f"coupling={case.coupling_frames}f "
-                f"cos={case.peak_coupling:.2f} | "
-                + case.last_reason(2)
+            # ── Track whether a bin was EVER visible during this case's
+            # lifetime, not just in the final frame at closure time.
+            if tracked_bins:
+                case.bins_were_present = True
+
+            # ── Per-frame kinematic snapshot (unchanged purpose — dense
+            # history for the LLM's own re-examination / final-call prompt) ──
+            # ── Per-frame kinematic snapshot (unchanged purpose — dense
+            # history for the LLM's own re-examination / final-call prompt) ──
+            # obj_pos/obj_confidence report THIS FRAME's trustworthy reading
+            # only — None when the object wasn't confidently seen this
+            # frame — rather than case.final_obj_pos/final_obj_confidence,
+            # which hold the last confident value indefinitely and would
+            # otherwise make a long-gone object look "currently tracked at
+            # low confidence" for every frame after it actually disappeared.
+            obj_pos            = case.final_obj_pos if obj_confidence_ok else None
+            obj_conf_for_frame  = case.final_obj_confidence if obj_confidence_ok else None
+            person_pos = ph.last_pos if ph else None
+            obj_speed    = _speed(_vel(case.obj_trail, n=3)) if len(case.obj_trail) >= 2 else 0.0
+            person_speed = _speed(ph.velocity()) if ph else 0.0
+            distance     = _dist(obj_pos, person_pos) if (obj_pos and person_pos) else float("inf")
+
+            # coupling_score: cosine similarity of this frame's object/person
+            # velocity, when both have enough trail history to compute one —
+            # same formula _update_motion_coupling uses internally, recomputed
+            # here rather than threaded through _Case, to keep this snapshot
+            # self-contained and avoid adding a new per-frame field to _Case
+            # just for this. None when either trail is too short.
+            coupling_score = None
+            if ph and len(ph.trail) >= 3 and len(case.obj_trail) >= 3:
+                p_vel = ph.velocity()
+                o_vel = _vel(case.obj_trail, n=3)
+                if _speed(p_vel) > 1e-3 and _speed(o_vel) > 1e-3:
+                    coupling_score = _cosine_sim(p_vel, o_vel)
+
+            belief = self._beliefs.get_or_create(pair_id)
+            belief.record_snapshot(KinematicSnapshot(
+                frame_idx=frame_idx, obj_pos=obj_pos, person_pos=person_pos,
+                obj_speed=obj_speed, person_speed=person_speed, distance=distance,
+                obj_confidence=obj_conf_for_frame,
+                coupling_score=coupling_score,
+            ))
+
+            # ── Closure signal 2: object missing (only counts once some
+            # coupling was actually seen — an object that was never coupled
+            # in the first place shouldn't trigger this path at all; that
+            # case just ages out via _purge()'s MAX_CASE_AGE_FRAMES instead) ──
+            # ── Closure signal: only close once the PERSON is gone — either
+            # they've fully left, or they've been gone a short while AND the
+            # object has also been missing a long time (truly stale). A solo
+            # obj_missing trigger fired too early for static dumping: the
+            # object commonly drops out of tracking (occlusion / low
+            # confidence on a small stationary item) the moment it's set
+            # down — well before the person actually walks off — so closing
+            # on that alone truncated the timeline before showing what the
+            # person does next.
+            window_closed = (
+                case.person_gone_frames >= cfg.PERSON_GONE_CLOSE_FRAMES
+                or (
+                    case.person_gone_frames >= 15
+                    and case.obj_missing_frames >= cfg.OBJECT_MISSING_CLOSE_FRAMES
+                )
             )
 
-        self.active_cases = [c for c in self._cases.values() if not c.locked]
+            if window_closed:
+                trigger = (
+                    "person" if case.person_gone_frames >= cfg.PERSON_GONE_CLOSE_FRAMES
+                    else "person+object_stale"
+                )
+                case.log(
+                    f"window_closed person_gone={case.person_gone_frames}f "
+                    f"obj_missing={case.obj_missing_frames}f "
+                    f"trigger={trigger}"
+                )
+                verdict = self._finalise_with_llm(case, tracked_bins, frame_idx, ph)
+                if verdict:
+                    new_verdicts.append(verdict)
+
+            # ── Rebuild frame_signals for the visualizer (Gap 4) ─────────────
+            coupling_now = coupling_score if coupling_score is not None else 0.0
+            self.frame_signals[pair_id] = (
+                f"coupling={coupling_now:.2f} "
+                f"peak={case.peak_coupling:.2f} | "
+                f"obj_missing={case.obj_missing_frames}f "
+                f"person_gone={case.person_gone_frames}f | "
+                + case.last_reason_str()
+            )
+
+        self.active_cases = [c for c in self._cases.values() if not c.closed]
         self._purge()
         return new_verdicts
-
+    
     def get_all_results(self) -> List[dict]:
         return [c.result for c in self._cases.values()
-                if c.locked and c.result is not None]
+                if c.closed and c.result is not None
+                and not c.result.get("skipped", False)]
+    def finalize_all(self, frame_idx: int, tracked_bins: List[TrackedBin]) -> List[dict]:
+        """
+        Force-close every still-open case — called once when the video ends.
+        Needed because the in-loop closure condition only fires on
+        person_gone_frames (or person_gone+obj_missing-stale); a person who
+        never leaves frame before the clip ends would otherwise leave every
+        case open forever and produce zero verdicts.
+        """
+        verdicts = []
+        for pair_id, case in list(self._cases.items()):
+            if case.closed:
+                continue
+            ph = self._persons.get(case.person_id)
+            case.log(f"video_ended_forcing_closure frame={frame_idx}")
+            verdict = self._finalise_with_llm(case, tracked_bins, frame_idx, ph)
+            if verdict:
+                verdicts.append(verdict)
+        return verdicts
+
+    def get_active_beliefs(self) -> List[dict]:
+        """
+        Snapshot of all non-locked BeliefStates, for debug overlay / testing.
+        Phase 2 only — confidence here is NOT the final verdict confidence
+        (that still comes from _finalise's weighted formula); it's whatever
+        the LLM belief loop will eventually write here in Phase 3.
+        """
+        return [b.to_prompt_dict() for b in self._beliefs.all_active()]
 
     # ── Motion coupling ───────────────────────────────────────────────────────
 
@@ -442,7 +585,25 @@ class DumpingAgent:
                 pair_id, closest_p.track_id, obj.track_id, frame_idx
             )
 
-            if case.locked or case.state in (_State.RELEASED, _State.RESTING, _State.LOCKED):
+            if case.closed:
+                continue
+
+            # FIX 8a: confidence gate BEFORE this frame's centroid can feed
+            # obj_trail / coupling_frames / diverge_frames. Previously this
+            # loop had no confidence check at all — a flickering
+            # low-confidence detection (e.g. clothing/shadow misclassified)
+            # could still trip cosine-similarity divergence checks below
+            # and silently advance a case toward RELEASED. Skip this
+            # object entirely for THIS frame's coupling computation when
+            # its detection confidence isn't trustworthy; existing
+            # coupling/diverge counters simply don't get touched this
+            # frame (no spurious reset either) rather than being corrupted
+            # by noise.
+            if obj.confidence < cfg.MIN_OBJECT_CONFIDENCE:
+                case.log(
+                    f"L5_low_conf_coupling_skip obj_conf={obj.confidence:.2f} "
+                    f"< min={cfg.MIN_OBJECT_CONFIDENCE:.2f}"
+                )
                 continue
 
             ph = self._persons.get(closest_p.track_id)
@@ -450,438 +611,216 @@ class DumpingAgent:
                 continue
             p_vel   = ph.velocity()
             p_speed = _speed(p_vel)
-
             if len(case.obj_trail) < 3:
                 case.obj_trail.append(obj_c)
                 continue
             case.obj_trail.append(obj_c)
             o_vel   = _vel(case.obj_trail, n=3)
             o_speed = _speed(o_vel)
-
             if p_speed < cfg.MIN_MOVE_PX_FOR_COUPLING and o_speed < cfg.MIN_MOVE_PX_FOR_COUPLING:
-                if closest_d < 100:
-                    case.coupling_frames += 1
                 continue
-
             cos_sim = _cosine_sim(p_vel, o_vel)
-
             if p_speed > 1e-3 and o_speed > 1e-3:
                 ratio = max(p_speed, o_speed) / min(p_speed, o_speed)
                 if ratio > cfg.COUPLING_SPEED_RATIO:
                     cos_sim *= 0.3
+            if cos_sim >= cfg.COUPLING_COS_THRESH:
+                case.coupling_scores.append(cos_sim)
+                case.peak_coupling = max(case.peak_coupling, cos_sim)
 
-            if case.state in (_State.WATCHING, _State.POSSESSED):
-                if cos_sim >= cfg.COUPLING_COS_THRESH:
-                    case.coupling_frames += 1
-                    case.coupling_scores.append(cos_sim)
-                    case.peak_coupling = max(case.peak_coupling, cos_sim)
-                    case.diverge_frames = 0
-
-                    if (case.state == _State.WATCHING
-                            and case.coupling_frames >= cfg.MIN_COUPLING_FRAMES):
-                        case.state = _State.POSSESSED
-                        case.log(
-                            f"possessed confirmed coupling={case.coupling_frames}f "
-                            f"peak_cos={case.peak_coupling:.2f}"
-                        )
-                else:
-                    if case.state == _State.POSSESSED:
-                        case.diverge_frames += 1
-                        case.diverge_scores.append(cos_sim)
-                        case.release_clarity = cos_sim
-
-                        if case.diverge_frames >= cfg.DIVERGE_CONFIRM_FRAMES:
-                            case.state = _State.RELEASED
-                            case.post_release_frames = 0
-                            case.log(
-                                f"L5_release_detected diverge={case.diverge_frames}f "
-                                f"cos={cos_sim:.2f}"
-                            )
-
-    # ── State machine ─────────────────────────────────────────────────────────
-
-    def _advance(
-        self,
-        case:         _Case,
-        tracked_bins: List[TrackedBin],
-        frame_idx:    int,
-        ph:           Optional[_PersonHistory],
-    ) -> Optional[dict]:
-
-        # WATCHING: not yet confirmed possession
-        # Do NOT jump to RELEASED from here — L4 firing early while the bag
-        # is still held causes the overlay to show RELEASED prematurely.
-        # Instead, wait for L5 coupling to confirm POSSESSED first.
-        # WATCHING: not yet confirmed possession.
-        # Never jump straight to RELEASED from WATCHING — always go through POSSESSED.
-        # Jumping to RELEASED here is what causes the overlay to show "RELEASED"
-        # while the bag is still in the person's hand.
-        if case.state == _State.WATCHING:
-            if case.stored_l4_event and case.stored_l4_event.event != "pending":
-                if case.coupling_frames >= cfg.MIN_COUPLING_FRAMES:
-                    # L5 confirmed possession AND L4 says released — safe to go to RELEASED
-                    case.state = _State.RELEASED
-                    case.post_release_frames = 0
-                    case.log(f"watching_to_released l4+l5 coupling={case.coupling_frames}f")
-                else:
-                    # L4 fired but possession not yet confirmed by L5 — advance to POSSESSED
-                    # and wait for divergence signal before going to RELEASED
-                    case.state = _State.POSSESSED
-                    case.log(f"watching_to_possessed l4_early coupling={case.coupling_frames}f")
-            return None
-
-        if case.state == _State.POSSESSED:
-            if case.stored_l4_event and case.stored_l4_event.event != "pending":
-                if case.diverge_frames == 0:
-                    case.log(f"l4_release_backup coupling={case.coupling_frames}f")
-                    case.state = _State.RELEASED
-                    case.post_release_frames = 0
-                # Fast path: if L4 has a firm verdict AND L5 has confirmed
-                # possession, skip RELEASED+RESTING and finalise immediately.
-                # This prevents the verdict from arriving after the video ends.
-                if (case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
-                        and case.stored_l4_event.confidence >= 0.45):
-                    case.state = _State.RESTING
-                    case.rest_via_timeout = True
-                    case.log(
-                        f"l4_fast_path conf={case.stored_l4_event.confidence:.2f} "
-                        f"coupling={case.coupling_frames}f"
-                    )
-                    return self._finalise(case, tracked_bins, frame_idx, ph)
-            return None
-
-        if case.state == _State.RELEASED:
-            case.post_release_frames += 1
-
-            # Fast path: L4 has a firm verdict and object has been
-            # released — no need to wait for full rest confirmation.
-            if (case.stored_l4_event is not None
-                    and case.stored_l4_event.event != "pending"
-                    and case.stored_l4_event.confidence >= 0.45
-                    and case.post_release_frames >= 3):
-                case.state = _State.RESTING
-                case.rest_via_timeout = True
-                case.log(
-                    f"l4_release_fast_path frames={case.post_release_frames} "
-                    f"conf={case.stored_l4_event.confidence:.2f}"
-                )
-                return self._finalise(case, tracked_bins, frame_idx, ph)
-
-            if len(case.obj_trail) >= 3:
-                o_vel  = _vel(case.obj_trail, n=3)
-                o_spd  = _speed(o_vel)
-
-                if o_spd < cfg.REST_VEL_PX:
-                    case.rest_frames += 1
-                else:
-                    case.rest_frames = 0
-
-                if case.rest_frames >= cfg.REST_CONFIRM_FRAMES:
-                    case.state = _State.RESTING
-                    case.log(f"object_at_rest vel={o_spd:.1f}px")
-                    return self._finalise(case, tracked_bins, frame_idx, ph)
-
-            # Also count missing frames as rest — bag on ground may flicker
-            if case.obj_missing_frames >= 2:
-                case.rest_frames += 1
-                if case.rest_frames >= cfg.REST_CONFIRM_FRAMES:
-                    case.state = _State.RESTING
-                    case.rest_via_timeout = True
-                    case.log(f"rest_via_missing_frames missing={case.obj_missing_frames}f")
-                    return self._finalise(case, tracked_bins, frame_idx, ph)
-
-            if case.post_release_frames >= cfg.REST_MAX_WAIT:
-                case.state = _State.RESTING
-                case.rest_via_timeout = True
-                case.log(f"rest_timeout after {cfg.REST_MAX_WAIT}f")
-                return self._finalise(case, tracked_bins, frame_idx, ph)
-
-            return None
-
-    # ── FIX 7: Bin-entry detection ────────────────────────────────────────────
-
-    def _check_bin_entry(
-        self,
-        case:         _Case,
-        tracked_bins: List[TrackedBin],
-        ph:           Optional[_PersonHistory],
-    ) -> Tuple[bool, str]:
-        """
-        Detects the "object entered bin" scenario that Layer 4 cannot handle.
-
-        Returns (override_to_legal: bool, reason_string: str).
-
-        The pattern we look for:
-          1. Object disappeared suddenly (rest_via_timeout=True, rest_frames==0)
-             → object never settled on ground; it vanished mid-air or on impact
-          2. A bin is present in the scene
-          3. Strong possession confirmed (coupling >= MIN_COUPLING_FRAMES,
-             peak_cos >= BIN_ENTRY_MIN_PEAK_COS)
-             → the object was genuinely being carried, not incidentally nearby
-          4. Person was approaching the bin OR person was near the bin
-             when the object disappeared
-             → trajectory corroborates intentional disposal into bin
-
-        Any combination where 1+2+3 are true and 4 is partially true will
-        trigger the override.  The threshold for (4) is loosened when the
-        person was spatially close to the bin (BIN_PERSON_RADIUS_PX).
-        """
-        # Condition 1: object vanished (timeout with zero natural rest frames)
-        obj_vanished = case.rest_via_timeout and case.rest_frames == 0
-
-        if not obj_vanished:
-            return False, ""
-
-        # Condition 2: bin present
-        if not tracked_bins:
-            return False, ""
-
-        # Condition 3: strong coupling (object was genuinely being carried)
-        strong_possession = (
-            case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
-            and case.peak_coupling >= cfg.BIN_ENTRY_MIN_PEAK_COS
-        )
-        if not strong_possession:
-            return False, ""
-
-        # Condition 4: person trajectory toward bin
-        person_approach, approach_bin_id = (
-            ph.bin_approach_score(tracked_bins) if ph else (0.0, None)
-        )
-
-        # Secondary: was person near bin when object vanished?
-        person_near_bin = False
-        person_bin_dist = float("inf")
-        if ph:
-            person_bin_dist = ph.nearest_bin_dist(tracked_bins)
-            person_near_bin = person_bin_dist <= cfg.BIN_PERSON_RADIUS_PX
-
-        # Determine effective approach threshold
-        effective_thresh = (
-            cfg.BIN_APPROACH_CORROBORATED if person_near_bin else cfg.BIN_APPROACH_THRESH
-        )
-
-        if person_approach < effective_thresh:
-            # Not enough trajectory evidence — don't override
-            return False, ""
-
-        # All signals converge → object entered bin
-        reason = (
-            f"l5_bin_entry_override: "
-            f"obj_vanished=True "
-            f"coupling={case.coupling_frames}f "
-            f"peak_cos={case.peak_coupling:.2f} "
-            f"person_approach={person_approach:.2f} "
-            f"person_bin_dist={person_bin_dist:.0f}px "
-            f"bin#{approach_bin_id}"
-        )
-        return True, reason
 
     # ── Finalise verdict ──────────────────────────────────────────────────────
 
-    def _finalise(self, case, tracked_bins, frame_idx, ph) -> dict:
+    def _finalise_with_llm(
+    self,
+    case:         _Case,
+    tracked_bins: List[TrackedBin],
+    frame_idx:    int,
+    ph:           Optional[_PersonHistory],
+) -> dict:
 
-        ev           = case.stored_l4_event
-        l4_verdict   = ev.event if ev else None
-        bins_present = len(tracked_bins) > 0
+        # ── Signal-quality gate: a case where coupling never crossed the
+        # threshold that _update_motion_coupling() itself uses to record a
+        # coupling score at all means the person and object were never
+        # observed moving together, even once. That's not weak evidence of
+        # dumping — it's the absence of evidence for possession, which
+        # dumping logically requires. Skip the LLM call entirely; there is
+        # nothing for it to reason about.
+        if case.peak_coupling < cfg.COUPLING_COS_THRESH or len(case.coupling_scores) < 3:
+            case.log(
+                f"L5_skipped_no_coupling_evidence peak={case.peak_coupling:.2f} "
+                f"frames={len(case.coupling_scores)} — no LLM call made"
+            )
+            result = {
+                "violation":       False,
+                "confidence":      0.0,
+                "event":           "legal_disposal",
+                "skipped":         True,
+                "person_id":       case.person_id,
+                "object_id":       case.trash_id,
+                "pair_id":         case.pair_id,
+                "reason":          "L5_no_coupling_evidence: object never observed moving with a person",
+                "frames":          [case.start_frame, frame_idx],
+                "reasoning_log":   list(case.reasoning),
+                "coupling_frames": len(case.coupling_scores),
+                "peak_coupling":   round(case.peak_coupling, 2),
+                "release_clarity": 0.0,
+                "rest_frames":     case.obj_missing_frames,
+                "intent_score":    0.0,
+                "obj_approach":    0.0,
+            }
+            case.result = result
+            case.closed = True
+            return result
 
-        l5_confirmed_possession = case.coupling_frames >= cfg.MIN_COUPLING_FRAMES
-        l5_confirmed_release    = (case.diverge_frames >= cfg.DIVERGE_CONFIRM_FRAMES
-                                   or case.rest_via_timeout
-                                   or case.state == _State.RESTING)
-
-        if l4_verdict == "illegal_dumping":
-            is_violation = True
-        elif l4_verdict == "legal_disposal":
-            is_violation = False
-        elif l5_confirmed_possession and l5_confirmed_release and not bins_present:
-            is_violation = True
-        elif l5_confirmed_possession and l5_confirmed_release and bins_present:
-            is_violation = True
-        else:
-            is_violation = False
-
-        # Strip L4 bin label — L5 will report the correct bin from its own spatial check
-        import re
-        if ev:
-            if ph and ph.last_pos and tracked_bins:
-                ref_bbox = np.array([ph.last_pos[0]-5, ph.last_pos[1]-5,
-                                     ph.last_pos[0]+5, ph.last_pos[1]+5])
-                _, correct_bin_obj = _best_bin_hierarchical(ref_bbox, ph.last_pos, tracked_bins)
-                correct_bin_id = correct_bin_obj.bin_id if correct_bin_obj else None
-                reasons = [re.sub(r'bin#\d+', f'bin#{correct_bin_id}', ev.reason)]
-            else:
-                reasons = [ev.reason]
-        else:
-            reasons = ["l5_independent_detection"]
-        # ── FIX 7: Bin-entry override (runs BEFORE other spatial checks) ──────
-        # This specifically handles the case where L4 said VIOLATION because
-        # the object's final tracked position was far from the bin — but the
-        # object actually entered the bin (tracker lost it on entry).
-        bin_entry_legal, bin_entry_reason = self._check_bin_entry(
-            case, tracked_bins, ph
+        bins_present = len(tracked_bins) > 0 or case.bins_were_present
+        belief = self._beliefs.get_or_create(case.pair_id)
+        case.log(
+            f"DEBUG_FINALIZE: tracked_bins_final_frame={len(tracked_bins)} "
+            f"bins_were_present_during_case={case.bins_were_present}"
         )
-        if bin_entry_legal:
-            is_violation = False
-            reasons.append(bin_entry_reason)
-            case.log(bin_entry_reason)
 
-        # ── Signal 1: Multi-bin spatial check ────────────────────────────────
-        # Only run if bin-entry override did NOT already flip to legal.
-        # (If it did, we trust the bin-entry logic over raw distance.)
-        final_pos = case.final_obj_pos
-        # Use person's last position instead of trash's last position
-        # — when bag enters bin it disappears near person's hand, not near bin center
-        ref_pos = ph.last_pos if (ph and ph.last_pos) else final_pos
-        if ref_pos and tracked_bins and not bin_entry_legal:
-            # Use hierarchical containment check with a dummy trash bbox
-            # centered on ref_pos when actual trash bbox is unavailable
+        # ── Last known person position from the recorded timeline — NOT the
+        # live `ph`, which can be stale or missing if the person's track was
+        # briefly lost/reacquired under a different id right before closure.
+        # Walk the kinematic history backwards to find the last frame where
+        # a person position was actually recorded.
+        last_person_pos = None
+        for s in reversed(belief.kinematic_history):
+            if s.person_pos is not None:
+                last_person_pos = s.person_pos
+                break
+
+        # ── Bin context — computed once, passed raw to the LLM instead of the
+        # old BIN_LEGAL_RADIUS_PX / BIN_APPROACH_THRESH heuristic thresholds.
+        # The LLM judges proximity/intent itself now.
+        ref_pos = last_person_pos or case.final_obj_pos
+        bin_d, nearest_bin_obj = (float("inf"), None)
+        if ref_pos and tracked_bins:
             ref_bbox = np.array([ref_pos[0]-5, ref_pos[1]-5,
-                                 ref_pos[0]+5, ref_pos[1]+5])
-            best_d, best_bin_obj = _best_bin_hierarchical(ref_bbox, ref_pos, tracked_bins)
-            best_bin_id = best_bin_obj.bin_id if best_bin_obj else None
-            if best_d <= cfg.BIN_LEGAL_RADIUS_PX:
-                is_violation = False
-                reasons.append(f"L5_bin_near dist={best_d:.0f}px bin#{best_bin_id}")
-                case.log(f"bin_override {best_d:.0f}px")
+                                ref_pos[0]+5, ref_pos[1]+5])
+            bin_d, nearest_bin_obj = _best_bin_hierarchical(ref_bbox, ref_pos, tracked_bins)
+        nearest_bin_id = nearest_bin_obj.bin_id if nearest_bin_obj else None
 
-        # ── Signal 2: Two-signal trajectory intent ────────────────────────────
         person_approach, approach_bin_id = (
             ph.bin_approach_score(tracked_bins) if ph else (0.0, None)
         )
 
-        obj_approach = 0.0
-        if tracked_bins and len(case.obj_trail) >= 4:
-            trail      = list(case.obj_trail)
-            target_bin = min(tracked_bins, key=lambda b: _dist(trail[-1], _bottom_center(b.bbox)))
-            bin_pos    = _bottom_center(target_bin.bbox)
-            converge   = sum(
-                1 for i in range(max(0, len(trail)-10), len(trail)-1)
-                if _dist(trail[i+1], bin_pos) < _dist(trail[i], bin_pos)
+        coupling_vals = case.coupling_scores
+        peak_coupling = case.peak_coupling
+        avg_coupling  = sum(coupling_vals) / len(coupling_vals) if coupling_vals else 0.0
+
+        # "Sustained drop" — coupling was once strong but the most recent
+        # scores are much weaker, a loose proxy for "they were together, then
+        # weren't" without reviving the old diverge_frames state machine.
+        sustained_drop = (
+            len(coupling_vals) >= 4
+            and peak_coupling >= 0.5
+            and (sum(coupling_vals[-3:]) / 3) < peak_coupling * 0.5
+        )
+
+        bin_context = {
+            "bins_present":          bins_present,
+            "nearest_bin_distance_px": round(bin_d, 0) if bin_d < float("inf") else None,
+            "nearest_bin_id":        nearest_bin_id,
+            "person_approach_score": round(person_approach, 2),
+        }
+
+        final_briefing = {
+            "coupling_frames_observed": len(coupling_vals),
+            "peak_coupling":          round(peak_coupling, 2),
+            "avg_coupling":           round(avg_coupling, 2),
+            "sustained_coupling_drop": sustained_drop,
+            "object_missing_frames":  case.obj_missing_frames,
+            "person_gone_frames":     case.person_gone_frames,
+            "object_final_position":  case.final_obj_pos,
+            "object_final_confidence": case.final_obj_confidence,
+            "bin_context":            bin_context,
+            # No heuristic_verdict / heuristic_confidence — there is no
+            # heuristic verdict anymore. The old prompt's "reference, not a
+            # constraint" framing doesn't apply; llm_controller.py's final
+            # prompt builder needs updating to not expect those keys (flagging
+            # for the llm_controller.py chunk).
+        }
+
+
+        try:
+            final_decision = llm_controller.call_agent_final(
+                belief, final_briefing,
+                kinematic_timeline=list(belief.kinematic_history),
+                frame_idx=frame_idx,
             )
-            obj_approach = converge / max(min(10, len(trail)-1), 1)
-
-        intent_score = (
-            cfg.TRAJ_PERSON_WEIGHT * person_approach +
-            cfg.TRAJ_OBJECT_WEIGHT * obj_approach
-        )
-
-        # FIX 3: Only allow intent to override to LEGAL when bins exist
-        if bins_present and intent_score >= cfg.TRAJ_LEGAL_THRESH and is_violation:
-            is_violation = False
-            reasons.append(
-                f"L5_traj_intent person={person_approach:.2f} "
-                f"obj={obj_approach:.2f} combined={intent_score:.2f}"
+            is_violation = final_decision.should_flag
+            final_conf   = round(final_decision.confidence, 3)
+            reasoning    = final_decision.new_reasoning
+            case.log(
+                f"L5_llm_final_verdict flag={is_violation} conf={final_conf:.2f}"
             )
-            case.log(f"traj_override intent={intent_score:.2f}")
-        else:
-            case.log(f"traj_intent={intent_score:.2f} bins={bins_present}")
-
-        # ── Signal 3: Evidence-weighted confidence ────────────────────────────
-        avg_coupling = (
-            sum(case.coupling_scores) / len(case.coupling_scores)
-            if case.coupling_scores else 0.0
-        )
-        coupling_conf = min(avg_coupling, 1.0)
-
-        diverge_conf = 1.0 - max(case.release_clarity, 0.0)
-
-        # FIX 5: rest_timeout path gets neutral rest_conf (0.5) not 0.0
-        if case.rest_via_timeout:
-            rest_conf = 0.5
-        else:
-            rest_conf = min(case.rest_frames / max(cfg.REST_CONFIRM_FRAMES, 1), 1.0)
-
-        if ref_pos and tracked_bins:
-            ref_bbox = np.array([ref_pos[0]-5, ref_pos[1]-5,
-                                 ref_pos[0]+5, ref_pos[1]+5])
-            bin_d, _ = _best_bin_hierarchical(ref_bbox, ref_pos, tracked_bins)
-            bin_d = bin_d if bin_d < float("inf") else float("inf")
-        else:
-            bin_d = float("inf")
-        bin_prox  = max(0.0, 1.0 - bin_d / 500.0) if bin_d < float("inf") else 0.0
-
-        l4_conf = ev.confidence if ev else 0.5
-
-        evidence_conf = (
-            cfg.CONF_COUPLING_W * coupling_conf +
-            cfg.CONF_DIVERGE_W  * diverge_conf  +
-            cfg.CONF_REST_W     * rest_conf      +
-            cfg.CONF_BIN_PROX_W * bin_prox
-        )
-        final_conf = round(0.50 * l4_conf + 0.50 * evidence_conf, 3)
-
-        if final_conf < cfg.MIN_CONFIDENCE_TO_ACT and is_violation:
+        except llm_controller.LLMResponseError as e:
+            # No heuristic fallback exists anymore (heuristic verdict math is
+            # deleted) — an LLM failure at closure means we can't produce a
+            # verdict. Log it and close the case as a non-violation with zero
+            # confidence rather than silently dropping it or crashing the run.
+            case.log(f"L5_llm_final_failed: {e}")
             is_violation = False
-            reasons.append(f"L5_low_evidence conf={final_conf:.2f}")
-            case.log("low_evidence_blocked")
+            final_conf   = 0.0
+            reasoning    = f"llm_final_call_failed: {e}"
 
-        # FIX 4: Suppress no_coupling penalty when L4 independently confirms violation
-        l4_confirms_violation = (l4_verdict == "illegal_dumping")
-        if (case.coupling_frames < cfg.MIN_COUPLING_FRAMES
-                and is_violation
-                and not l4_confirms_violation):
-            final_conf = max(0.0, final_conf - 0.15)
-            reasons.append(f"L5_no_coupling coupling={case.coupling_frames}f")
-            case.log("no_coupling_penalty")
-        elif case.coupling_frames < cfg.MIN_COUPLING_FRAMES and is_violation:
-            reasons.append(f"L5_weak_coupling coupling={case.coupling_frames}f (l4_confirmed)")
-            case.log("weak_coupling_noted_l4_confirmed")
+        reasons = [f"L5_llm_final: {reasoning}"]
 
         result = {
             "violation":       is_violation,
-            "confidence":      round(final_conf, 3),
+            "confidence":      final_conf,
             "event":           "illegal_dumping" if is_violation else "legal_disposal",
             "person_id":       case.person_id,
             "object_id":       case.trash_id,
             "pair_id":         case.pair_id,
             "reason":          " | ".join(reasons),
-            "coupling_frames": case.coupling_frames,
-            "peak_coupling":   round(case.peak_coupling, 2),
-            "release_clarity": round(1.0 - case.release_clarity, 2),
-            "rest_frames":     case.rest_frames,
+            "kinematic_frames_analyzed": len(belief.kinematic_history),
             "person_approach": round(person_approach, 2),
-            "obj_approach":    round(obj_approach, 2),
-            "intent_score":    round(intent_score, 2),
-            "l4_held":         _parse_held_frames(ev.reason) if ev else 0,
             "frames":          [case.start_frame, frame_idx],
             "reasoning_log":   list(case.reasoning),
-            # ── Evidence components — previously only printed, now persisted
-            # so tools/batch_eval.py can dump a feature CSV for training a
-            # learned scorer (logistic regression) instead of hand-tuning
-            # Layer4/Layer5 threshold constants.
-            "coupling_conf":   round(coupling_conf, 3),
-            "diverge_conf":    round(diverge_conf, 3),
-            "rest_conf":       round(rest_conf, 3),
-            "bin_prox":        round(bin_prox, 3),
-            "l4_conf":         round(l4_conf, 3),
-            "evidence_conf":   round(evidence_conf, 3),
+            # ── Backward-compatible aliases for visualizer.py (Gap 4) ────────
+            "coupling_frames": len(coupling_vals),
+            "peak_coupling":   round(peak_coupling, 2),
+            "release_clarity": round(1.0 - avg_coupling, 2) if sustained_drop else 0.0,
+            "rest_frames":     case.obj_missing_frames,
+            "intent_score":    0.0,
+            "obj_approach":    0.0,
         }
-        # ── Guard: trash object already claimed by a prior confirmed violation ──
+
+        # ── Guard: trash object already claimed by a prior confirmed violation.
+        # Carried over from the old heuristic _finalise() at your instruction —
+        # now runs AFTER the LLM verdict rather than blending into a heuristic
+        # confidence score, since there's no heuristic score to blend into.
         if is_violation and case.trash_id in self._used_trash_ids:
             is_violation = False
+            result["violation"] = False
+            result["event"] = "legal_disposal"
             reasons.append(f"L5_trash_already_claimed T{case.trash_id}")
+            result["reason"] = " | ".join(reasons)
             case.log("trash_claimed_by_prior_violation")
             final_conf = max(0.0, final_conf - 0.20)
+            result["confidence"] = round(final_conf, 3)
 
         if is_violation:
-            self._used_trash_ids.add(case.trash_id)   # claim it
+            self._used_trash_ids.add(case.trash_id)
 
         case.result = result
-        case.locked = True
-        case.state  = _State.LOCKED
+        case.closed = True
+
+        belief.phase = PipelineState.FINALIZED
+        belief.confidence = final_conf
 
         tag = "🚨 VIOLATION" if is_violation else "✅ LEGAL"
         print(
             f"[Layer5] {tag} | {result['event']} | conf={final_conf:.2f} | "
             f"P{case.person_id} T{case.trash_id} | "
-            f"coupling={case.coupling_frames}f cos={case.peak_coupling:.2f} | "
-            f"intent={intent_score:.2f} rest={case.rest_frames}f | "
+            f"coupling_peak={peak_coupling:.2f} avg={avg_coupling:.2f} | "
+            f"obj_missing={case.obj_missing_frames}f person_gone={case.person_gone_frames}f | "
             f"frames={result['frames']}"
         )
-        print(f"         evidence: coupling={coupling_conf:.2f} "
-              f"diverge={diverge_conf:.2f} rest={rest_conf:.2f} bin={bin_prox:.2f}")
-        print(f"         reasons:  {result['reason']}")
+        print(f"         reason: {result['reason']}")
         return result
 
     # ── Ghost filter ──────────────────────────────────────────────────────────
@@ -890,7 +829,7 @@ class DumpingAgent:
         if ph is None:
             return True
         if ph.frames < cfg.GHOST_MIN_FRAMES or ph.movement < cfg.GHOST_MIN_MOVEMENT:
-            if case.coupling_frames >= cfg.MIN_COUPLING_FRAMES:
+            if case.peak_coupling >= 0.7:
                 return False
             return True
         return False
@@ -995,22 +934,14 @@ class DumpingAgent:
 
     def _age_cases(self) -> None:
         for c in self._cases.values():
-            if not c.locked:
+            if not c.closed:
                 c.frames_since_update += 1
 
     def _purge(self) -> None:
         stale = [
             k for k, c in self._cases.items()
-            if not c.locked and (
-                c.frames_since_update > cfg.MAX_CASE_AGE_FRAMES
-                or (
-                    # Kill unconfirmed cases quickly if the object has disappeared —
-                    # these are stale/phantom pairs (e.g. id2 that never really existed)
-                    c.frames_since_update > 10
-                    and c.state == _State.WATCHING
-                    and c.coupling_frames == 0
-                )
-            )
+            if not c.closed and c.frames_since_update > cfg.MAX_CASE_AGE_FRAMES
         ]
         for k in stale:
             del self._cases[k]
+            self._beliefs.purge(k)
