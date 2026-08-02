@@ -1,6 +1,10 @@
 .env
 __pycache__/
 videos/
+dataset.zip
+EDSR_x4.pb
+rtdetr-l.pt
+yolov8n.pt
 *.pyc
 .DS_Store
 venv/
