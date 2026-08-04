@@ -119,6 +119,163 @@ def _extract_gps_location(source: str) -> str:
     return "Bengaluru, Karnataka"
 
 
+def _process_violation_verdict(
+    verdict,
+    tracked_objs,
+    frame_buffer,
+    violation_evidence_frames,
+    cap,
+    enhancer,
+    face_id,
+    delivery_agent,
+    location,
+    save,
+):
+    """
+    Process a single VIOLATION verdict: find possessor bbox, get evidence
+    frame, run plate OCR, fall back to FaceID, generate challan.
+    Called both during the frame loop (l5_new verdicts) and after
+    agent.finalize_all() (verdicts produced once the clip ends).
+    """
+    person_obj = next(
+        (o for o in tracked_objs
+         if o.track_id == verdict["person_id"]),
+        None,
+    )
+
+    trash_obj = next(
+        (o for o in tracked_objs
+         if o.track_id == verdict["object_id"]),
+        None,
+    )
+    all_persons = [
+        o for o in tracked_objs
+        if o.class_name == "person"
+        and _bbox_area(o.bbox) > 500
+    ]
+    if all_persons and trash_obj is not None:
+        tx, ty = _bbox_centre(trash_obj.bbox)
+        closest = min(
+            all_persons,
+            key=lambda o: (
+                (_bbox_centre(o.bbox)[0] - tx) ** 2
+                + (_bbox_centre(o.bbox)[1] - ty) ** 2
+            ),
+        )
+        if (
+            person_obj is None
+            or closest.track_id != person_obj.track_id
+        ):
+            print(
+                f"[DEBUG] overriding to "
+                f"person_id={closest.track_id} "
+                f"(closest to trash "
+                f"{verdict['object_id']})"
+            )
+            person_obj = closest
+
+    if person_obj is not None:
+        for o in tracked_objs:
+            print(
+                f"[DEBUG] track_id={o.track_id} "
+                f"class={o.class_name} bbox={o.bbox}"
+            )
+        print(
+            f"[DEBUG] using person_id="
+            f"{person_obj.track_id} "
+            f"bbox={person_obj.bbox}"
+        )
+    else:
+        print(
+            f"[DEBUG] no valid person found for "
+            f"verdict P{verdict['person_id']} "
+            f"T{verdict['object_id']} — "
+            f"running enhancer on full frame"
+        )
+
+    trash_id       = verdict["object_id"]
+    evidence_frame = violation_evidence_frames.get(trash_id, None)
+    is_cached      = evidence_frame is not None
+
+    if evidence_frame is None:
+        lookback       = min(40, len(frame_buffer) - 1)
+        evidence_frame = frame_buffer[-(lookback + 1)]
+        print(f"[Evidence] No cached frame for trash_id={trash_id}, using frame_buffer[-{lookback+1}]")
+    else:
+        print(f"[Evidence] Using cached throw frame for trash_id={trash_id}")
+
+    # Only scan future frames when we DON'T have the throw moment cached
+    combined = list(cap_frame_generator(cap, 150))  # always scan future for plate
+    result = enhancer.process_event(
+        frame                = evidence_frame,        # base frame (also used if no future frames)
+        person_bbox          = (
+            person_obj.bbox if person_obj is not None else None
+        ),
+        person_id            = verdict["person_id"],
+        pair_id              = verdict["pair_id"],
+        save_dir             = "evidence",
+        frame_iter           = iter(combined) if combined else None,  # future frames → plate scan
+        force_evidence_frame = evidence_frame if is_cached else None, # pin throw photo ← ADD THIS
+    )
+    if result.plate_text:
+        print(
+            f"[Enhancer] 🚗 PLATE: "
+            f"{result.plate_text} "
+            f"(conf={result.plate_conf:.2f})"
+        )
+    else:
+        print(
+            f"[Enhancer] ⚠️  No plate read | "
+            f"blur={result.blur_score:.1f} | "
+            f"scanned={result.frames_scanned}f"
+        )
+        # No plate → try FaceID on the evidence frame
+        print("[Pipeline] No plate — attempting FaceID...")
+        # Pass the full evidence photo path so the
+        # challan uses it instead of the face crop
+        evidence_photo = next(
+            (p for p in result.saved_paths if "_evidence.jpg" in p),
+            result.saved_paths[0] if result.saved_paths else None,
+        )
+        face_result = face_id.process(
+            frame         = evidence_frame,
+            location      = location,
+            confidence    = verdict["confidence"],
+            evidence_path = evidence_photo,
+        )
+        if face_result:
+            if face_result["status"] == "matched":
+                print(f"[FaceID] ✅ Identified: {face_result['name']} | challan={face_result['challan_id']}")
+                delivery_agent.notify_new_challan(face_result["challan_id"])
+            else:
+                print(f"[FaceID] ❓ Unknown person — logged for manual review")
+        # Skip the normal challan flow below since FaceID handled it
+        return
+    # ── Penalty challan ───────────────────────────────────────────
+    # Use the throw-moment evidence photo for the challan,
+    # not the ALPR debug frame (which is the car mirror shot)
+    # ── Penalty challan (only if plate was found; FaceID handles no-plate case) ──
+    if not result.plate_text:
+        pass  # already handled by FaceID above
+    else:
+        evidence_photo = next(
+            (p for p in result.saved_paths if "_evidence.jpg" in p),
+            result.saved_paths[0] if result.saved_paths else None,
+        )
+        challan_id = process_pipeline_violation(
+            plate_number   = result.plate_text,
+            evidence_video = "vidtrace_output.mp4" if save else None,
+            evidence_plate = evidence_photo,
+            location       = location,
+            confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
+            auto_pdf       = True,
+        )
+        if challan_id:
+            print(f"[Challan] Issued: {challan_id}")
+        if challan_id:
+            delivery_agent.notify_new_challan(challan_id)
+
+
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Bengaluru"):
@@ -220,144 +377,11 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                     last_l5 = l5_new
                     for verdict in l5_new:
                         if verdict["event"] == "illegal_dumping":
-
-                            person_obj = next(
-                                (o for o in tracked_objs
-                                 if o.track_id == verdict["person_id"]),
-                                None,
+                            _process_violation_verdict(
+                                verdict, tracked_objs, frame_buffer,
+                                violation_evidence_frames, cap, enhancer,
+                                face_id, delivery_agent, location, save,
                             )
-
-                            trash_obj = next(
-                                (o for o in tracked_objs
-                                 if o.track_id == verdict["object_id"]),
-                                None,
-                            )
-                            all_persons = [
-                                o for o in tracked_objs
-                                if o.class_name == "person"
-                                and _bbox_area(o.bbox) > 500
-                            ]
-                            if all_persons and trash_obj is not None:
-                                tx, ty = _bbox_centre(trash_obj.bbox)
-                                closest = min(
-                                    all_persons,
-                                    key=lambda o: (
-                                        (_bbox_centre(o.bbox)[0] - tx) ** 2
-                                        + (_bbox_centre(o.bbox)[1] - ty) ** 2
-                                    ),
-                                )
-                                if (
-                                    person_obj is None
-                                    or closest.track_id != person_obj.track_id
-                                ):
-                                    print(
-                                        f"[DEBUG] overriding to "
-                                        f"person_id={closest.track_id} "
-                                        f"(closest to trash "
-                                        f"{verdict['object_id']})"
-                                    )
-                                    person_obj = closest
-
-                            if person_obj is not None:
-                                for o in tracked_objs:
-                                    print(
-                                        f"[DEBUG] track_id={o.track_id} "
-                                        f"class={o.class_name} bbox={o.bbox}"
-                                    )
-                                print(
-                                    f"[DEBUG] using person_id="
-                                    f"{person_obj.track_id} "
-                                    f"bbox={person_obj.bbox}"
-                                )
-                            else:
-                                print(
-                                    f"[DEBUG] no valid person found for "
-                                    f"verdict P{verdict['person_id']} "
-                                    f"T{verdict['object_id']} — "
-                                    f"running enhancer on full frame"
-                                )
-
-                            trash_id       = verdict["object_id"]
-                            evidence_frame = violation_evidence_frames.get(trash_id, None)
-                            is_cached      = evidence_frame is not None
-
-                            if evidence_frame is None:
-                                lookback       = min(40, len(frame_buffer) - 1)
-                                evidence_frame = frame_buffer[-(lookback + 1)]
-                                print(f"[Evidence] No cached frame for trash_id={trash_id}, using frame_buffer[-{lookback+1}]")
-                            else:
-                                print(f"[Evidence] Using cached throw frame for trash_id={trash_id}")
-
-                            # Only scan future frames when we DON'T have the throw moment cached
-                            combined = list(cap_frame_generator(cap, 150))  # always scan future for plate
-                            result = enhancer.process_event(
-                                frame                = evidence_frame,        # base frame (also used if no future frames)
-                                person_bbox          = (
-                                    person_obj.bbox if person_obj is not None else None
-                                ),
-                                person_id            = verdict["person_id"],
-                                pair_id              = verdict["pair_id"],
-                                save_dir             = "evidence",
-                                frame_iter           = iter(combined) if combined else None,  # future frames → plate scan
-                                force_evidence_frame = evidence_frame if is_cached else None, # pin throw photo ← ADD THIS
-                            )
-                            if result.plate_text:
-                                print(
-                                    f"[Enhancer] 🚗 PLATE: "
-                                    f"{result.plate_text} "
-                                    f"(conf={result.plate_conf:.2f})"
-                                )
-                            else:
-                                print(
-                                    f"[Enhancer] ⚠️  No plate read | "
-                                    f"blur={result.blur_score:.1f} | "
-                                    f"scanned={result.frames_scanned}f"
-                                )
-                                # No plate → try FaceID on the evidence frame
-                                print("[Pipeline] No plate — attempting FaceID...")
-                                # Pass the full evidence photo path so the
-                                # challan uses it instead of the face crop
-                                evidence_photo = next(
-                                    (p for p in result.saved_paths if "_evidence.jpg" in p),
-                                    result.saved_paths[0] if result.saved_paths else None,
-                                )
-                                face_result = face_id.process(
-                                    frame         = evidence_frame,
-                                    location      = location,
-                                    confidence    = verdict["confidence"],
-                                    evidence_path = evidence_photo,
-                                )
-                                if face_result:
-                                    if face_result["status"] == "matched":
-                                        print(f"[FaceID] ✅ Identified: {face_result['name']} | challan={face_result['challan_id']}")
-                                        delivery_agent.notify_new_challan(face_result["challan_id"])
-                                    else:
-                                        print(f"[FaceID] ❓ Unknown person — logged for manual review")
-                                # Skip the normal challan flow below since FaceID handled it
-                                continue
-                            # ── Penalty challan ───────────────────────────────────────────
-                            # Use the throw-moment evidence photo for the challan,
-                            # not the ALPR debug frame (which is the car mirror shot)
-                            # ── Penalty challan (only if plate was found; FaceID handles no-plate case) ──
-                            if not result.plate_text:
-                                pass  # already handled by FaceID above
-                            else:
-                                evidence_photo = next(
-                                    (p for p in result.saved_paths if "_evidence.jpg" in p),
-                                    result.saved_paths[0] if result.saved_paths else None,
-                                )
-                                challan_id = process_pipeline_violation(
-                                    plate_number   = result.plate_text,
-                                    evidence_video = "vidtrace_output.mp4" if save else None,
-                                    evidence_plate = evidence_photo,
-                                    location       = location,
-                                    confidence     = result.plate_conf if result.plate_conf else verdict["confidence"],
-                                    auto_pdf       = True,
-                                )
-                                if challan_id:
-                                    print(f"[Challan] Issued: {challan_id}")
-                                if challan_id:
-                                    delivery_agent.notify_new_challan(challan_id)
 
                 # ── Visualise ─────────────────────────────────────────────────
                 vis = frame.copy()
@@ -414,13 +438,6 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
                 print(f"[Debug] L5 reasoning: {'ON' if show_reason else 'OFF'}")
 
     finally:
-        cap.release()
-        if writer:
-            writer.release()
-        cv2.destroyAllWindows()
-        delivery_agent.stop()
-        print(f"\n[Pipeline] Done. Frames: {frame_idx}")
-
         # Force-close any cases still open when the video ends — otherwise
         # a person who never leaves frame for PERSON_GONE_CLOSE_FRAMES
         # straight (common in short clips) leaves every case open forever
@@ -429,7 +446,29 @@ def run(source, save, debug, do_calibrate=True, location="Outer Ring Road, Benga
             final_tracked_bins = tracked_bins
         except NameError:
             final_tracked_bins = []
-        agent.finalize_all(frame_idx, final_tracked_bins)
+        try:
+            final_tracked_objs = tracked_objs
+        except NameError:
+            final_tracked_objs = []
+
+        # Run these BEFORE releasing cap / stopping delivery_agent below —
+        # enforcement needs the live capture (future-frame plate scan) and
+        # the running delivery thread (challan notifications).
+        final_verdicts = agent.finalize_all(frame_idx, final_tracked_bins)
+        for verdict in final_verdicts:
+            if verdict.get("event") == "illegal_dumping":
+                _process_violation_verdict(
+                    verdict, final_tracked_objs, frame_buffer,
+                    violation_evidence_frames, cap, enhancer,
+                    face_id, delivery_agent, location, save,
+                )
+
+        cap.release()
+        if writer:
+            writer.release()
+        cv2.destroyAllWindows()
+        delivery_agent.stop()
+        print(f"\n[Pipeline] Done. Frames: {frame_idx}")
 
         all_results = agent.get_all_results()
         if all_results:

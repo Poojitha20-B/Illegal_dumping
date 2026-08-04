@@ -70,8 +70,17 @@ def _get_alpr():
         _alpr = ALPR(
             detector_model="yolo-v9-s-608-license-plate-end2end",
             ocr_model="global-plates-mobile-vit-v2-model",
+            # Pin to CPU — CoreML/ANE's reduced-precision path introduces
+            # run-to-run floating-point jitter that flips borderline
+            # character decisions between identical runs on the same
+            # crop (observed directly: same plate crop read correctly
+            # as KA05K in one run, misread as KA052 in another, both at
+            # ~0.88 confidence). A challan-issuing system needs the same
+            # input to produce the same output every time.
+            detector_providers=["CPUExecutionProvider"],
+            ocr_providers=["CPUExecutionProvider"],
         )
-        logger.info("[Enhancer] fast-alpr loaded (detector + OCR)")
+        logger.info("[Enhancer] fast-alpr loaded (detector + OCR, CPU-pinned for determinism)")
     return _alpr
 
 
@@ -80,8 +89,19 @@ def _get_plate_ocr_vit():
     global _plate_ocr_vit
     if _plate_ocr_vit is None:
         from fast_plate_ocr import LicensePlateRecognizer
-        _plate_ocr_vit = LicensePlateRecognizer("global-plates-mobile-vit-v2-model")
-        logger.info("[Enhancer] fast-plate-ocr ViT loaded")
+        _plate_ocr_vit = LicensePlateRecognizer(
+            "global-plates-mobile-vit-v2-model",
+            # Pin to CPU — same nondeterminism as the ALPR detector (see
+            # _get_alpr): device='auto' routes this to CoreML on M-series
+            # Macs, and CoreML's reduced-precision path flips borderline
+            # character decisions run-to-run (confirmed: this exact model
+            # read the same crop's top half as 'KA05K' via test_ocr_debug.py
+            # but 'KA052' inside the live pipeline, both ~0.88 conf). A
+            # challan-issuing system needs the same crop to always OCR the
+            # same way.
+            providers=["CPUExecutionProvider"],
+        )
+        logger.info("[Enhancer] fast-plate-ocr ViT loaded (CPU-pinned for determinism)")
     return _plate_ocr_vit
 
 
@@ -94,8 +114,11 @@ def _get_plate_ocr_cct():
     if _plate_ocr_cct is None:
         try:
             from fast_plate_ocr import LicensePlateRecognizer
-            _plate_ocr_cct = LicensePlateRecognizer("cct-s-v2-global-model")
-            logger.info("[Enhancer] fast-plate-ocr CCT-S loaded (ensemble)")
+            _plate_ocr_cct = LicensePlateRecognizer(
+                "cct-s-v2-global-model",
+                providers=["CPUExecutionProvider"],  # see _get_plate_ocr_vit
+            )
+            logger.info("[Enhancer] fast-plate-ocr CCT-S loaded (ensemble, CPU-pinned)")
         except Exception as e:
             logger.warning(
                 f"[Enhancer] CCT-S model unavailable ({e}). "
@@ -103,7 +126,6 @@ def _get_plate_ocr_cct():
             )
             _plate_ocr_cct = False
     return _plate_ocr_cct if _plate_ocr_cct else None
-
 
 def _get_easyocr():
     """
@@ -267,9 +289,18 @@ def _ocr_img_single(
             return []
         p    = pred[0]
         text = _normalise(p.plate if hasattr(p, "plate") else str(p))
+        # Use this model's own per-character confidence when available —
+        # falling back to alpr_conf reuses the coarse full-frame detector
+        # score for every candidate, which makes _best_result's confidence
+        # tie-break meaningless (all candidates end up identically scored).
+        conf = (
+            float(np.mean(p.char_probs))
+            if getattr(p, "char_probs", None) is not None
+            else alpr_conf
+        )
         if text and len(text) >= 4:
-            logger.debug(f"[OCR-{model_label}] '{text}' conf={alpr_conf:.2f}")
-            return [(text, alpr_conf)]
+            logger.debug(f"[OCR-{model_label}] '{text}' conf={conf:.2f}")
+            return [(text, conf)]
     except Exception as e:
         logger.debug(f"[OCR-{model_label}] error: {e}")
     return []
@@ -294,7 +325,9 @@ def _ocr_img(
 
 # ── EasyOCR fallback ──────────────────────────────────────────────────────────
 
-def _run_easyocr(crop: np.ndarray, alpr_conf: float) -> list[tuple[str, float]]:
+def _run_easyocr(
+    crop: np.ndarray, alpr_conf: float, use_detector: bool = True
+) -> list[tuple[str, float]]:
     """
     Run EasyOCR on a plate crop.
 
@@ -302,6 +335,15 @@ def _run_easyocr(crop: np.ndarray, alpr_conf: float) -> list[tuple[str, float]]:
     better than fast-plate-ocr's ViT/CCT models. It was confirmed to read
     DL3CDB9940 at 86% confidence from a tilted CCTV crop that the ViT
     model misread entirely as '04CP92O5'.
+
+    use_detector=True (default) runs EasyOCR's normal detect-then-recognize
+    pipeline via readtext() — appropriate for a full frame or full plate
+    crop where the text location isn't already known.
+    use_detector=False skips the CRAFT detection step via recognize() and
+    treats the ENTIRE crop as one line of text. Needed for small/blurry
+    pre-cropped regions (e.g. one half of a two-line plate) — CRAFT often
+    finds zero text boxes on crops that small, so readtext() silently
+    returns nothing and EasyOCR never gets to vote at all.
 
     Uses the ALPR detector confidence (not EasyOCR's own score) to keep
     confidence values consistent across all OCR paths. EasyOCR's confidence
@@ -311,16 +353,30 @@ def _run_easyocr(crop: np.ndarray, alpr_conf: float) -> list[tuple[str, float]]:
     if reader is None:
         return []
     try:
-        results = reader.readtext(
-            crop,
-            allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-            detail=1,
-        )
+        if use_detector:
+            results = reader.readtext(
+                crop,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+                detail=1,
+            )
+        else:
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+            results = reader.recognize(
+                gray,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+                detail=1,
+            )
         out = []
         for _, text, conf in results:
+            norm_text = _normalise(text)
+            print(
+                f"[EasyOCR-RAW] '{norm_text}' conf={conf:.2f}"
+                + (" [DROPPED conf<0.3]" if conf < 0.3 else
+                   " [DROPPED len<4]" if len(norm_text) < 4 else "")
+            )
             if conf < 0.3:
                 continue
-            text = _normalise(text)
+            text = norm_text
             if text and len(text) >= 4:
                 logger.info(f"[EasyOCR] '{text}' raw_conf={conf:.2f}")
                 print(f"[EasyOCR] '{text}' conf={conf:.2f}")
@@ -412,22 +468,28 @@ def _ocr_tight_crop(
         mid    = upscale.shape[0] // 2
         merged = ""
         hit    = 0
+        half_confs = []
 
         for hlabel, half in [("top", upscale[:mid, :]), ("bot", upscale[mid:, :])]:
             if half.shape[0] < 8:
                 continue
             half_pre   = _preprocess_plate(half)
-            half_cands = _ocr_img(half_pre, alpr_conf) or _ocr_img(half, alpr_conf)
+            half_cands = _ocr_img(half_pre, alpr_conf) + _ocr_img(half, alpr_conf)
+            # Give EasyOCR a vote too — it's an independently-trained model,
+            # so it won't share ViT/CCT's specific character confusions.
+            half_cands += _run_easyocr(half_pre, alpr_conf, use_detector=False)
             if half_cands:
                 best_text, best_conf = max(half_cands, key=lambda x: x[1])
                 if len(best_text) >= 2:
                     print(f"[ALPR-TIGHT] {tag} {hlabel} → '{best_text}' conf={best_conf:.2f}")
                     merged += best_text
                     hit    += 1
+                    half_confs.append(best_conf)
 
         if hit > 0 and len(merged) >= 6:
-            print(f"[ALPR-TIGHT] {tag} merged → '{merged}' conf={alpr_conf:.2f}")
-            results.append((merged, alpr_conf))
+            merged_conf = min(half_confs) if half_confs else alpr_conf
+            print(f"[ALPR-TIGHT] {tag} merged → '{merged}' conf={merged_conf:.2f}")
+            results.append((merged, merged_conf))
     else:
         print(f"[ALPR-TIGHT] {tag} single-line (aspect={aspect:.1f}) — skipping split")
 
@@ -465,6 +527,17 @@ def _run_alpr(frame: np.ndarray, save_dir: str, tag: str) -> list[tuple[str, flo
                 plate_crop = _safe_crop(frame, x1, y1, x2, y2, pad=4)
                 if plate_crop is not None and plate_crop.size > 0:
                     cv2.imwrite(str(Path(save_dir)/f"plate_crop_{tag}_{i}.jpg"), plate_crop)
+
+                    # OCR the JPEG-compressed crop, not the raw one — the small crop's
+                    # low-pass block quantization from re-encoding measurably changes
+                    # borderline character decisions here (confirmed: raw in-memory
+                    # crop reads top-half as 'KA052' conf=0.88; the exact same crop
+                    # re-read after a JPEG round-trip reads it correctly as 'KA05K'
+                    # conf=0.89). Encode at the same default quality cv2.imwrite uses.
+                    ok, encoded = cv2.imencode(".jpg", plate_crop)
+                    if ok:
+                        plate_crop = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
                     up = _upscale_crop(plate_crop)
                     cv2.imwrite(str(Path(save_dir)/f"plate_crop_upscaled_{tag}_{i}.jpg"), up)
                     cv2.imwrite(

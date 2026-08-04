@@ -495,10 +495,11 @@ class DumpingAgent:
         self._purge()
         return new_verdicts
     
-    def get_all_results(self) -> List[dict]:
+    def get_all_results(self, min_confidence: float = 0.30) -> List[dict]:
         return [c.result for c in self._cases.values()
                 if c.closed and c.result is not None
-                and not c.result.get("skipped", False)]
+                and not c.result.get("skipped", False)
+                and c.result.get("confidence", 0.0) >= min_confidence]
     def finalize_all(self, frame_idx: int, tracked_bins: List[TrackedBin]) -> List[dict]:
         """
         Force-close every still-open case — called once when the video ends.
@@ -786,14 +787,53 @@ class DumpingAgent:
                 f"L5_llm_final_verdict flag={is_violation} conf={final_conf:.2f}"
             )
         except llm_controller.LLMResponseError as e:
-            # No heuristic fallback exists anymore (heuristic verdict math is
-            # deleted) — an LLM failure at closure means we can't produce a
-            # verdict. Log it and close the case as a non-violation with zero
-            # confidence rather than silently dropping it or crashing the run.
-            case.log(f"L5_llm_final_failed: {e}")
-            is_violation = False
-            final_conf   = 0.0
-            reasoning    = f"llm_final_call_failed: {e}"
+            # LLM unavailable (rate limit / outage) — fall back to the same
+            # raw kinematic signals we already built for the prompt (bin_context,
+            # sustained_drop, peak/avg coupling) instead of silently defaulting
+            # to legal_disposal conf=0.00. Silently failing open here means a
+            # real dumping case with strong coupling and a long-vanished object
+            # never reaches plate/FaceID at all — worse than a lower-confidence
+            # flag a human can review. Kept deliberately conservative: capped
+            # confidence, and explicitly tagged as heuristic so it's never
+            # confused with an LLM-confirmed verdict downstream.
+            case.log(f"L5_llm_final_failed: {e} — using heuristic fallback")
+
+            near_bin = (
+                bin_context["bins_present"]
+                and bin_context["nearest_bin_distance_px"] is not None
+                and bin_context["nearest_bin_distance_px"] <= cfg.BIN_LEGAL_RADIUS_PX
+            )
+            object_vanished = case.obj_missing_frames >= cfg.OBJECT_MISSING_CLOSE_FRAMES
+            strong_possession = peak_coupling >= 0.85 and len(coupling_vals) >= 5
+
+            if near_bin and object_vanished:
+                # Disappeared right at a bin — consistent with legal disposal.
+                is_violation = False
+                final_conf   = 0.30
+                reasoning = (
+                    "heuristic_fallback: object vanished near a bin "
+                    f"(dist={bin_context['nearest_bin_distance_px']}px) — "
+                    "treated as likely legal disposal, LLM unavailable to confirm"
+                )
+            elif strong_possession and object_vanished and not bin_context["bins_present"]:
+                # Carried with strong coupling, then vanished, no bin anywhere
+                # in the scene — the pattern L4/L5 exist to catch.
+                is_violation = True
+                final_conf   = 0.50
+                reasoning = (
+                    f"heuristic_fallback: peak_coupling={peak_coupling:.2f} "
+                    f"obj_missing={case.obj_missing_frames}f, no bin present in scene — "
+                    "flagged for human/plate review, LLM unavailable to confirm"
+                )
+            else:
+                # Ambiguous without the LLM's judgment — don't guess either way.
+                is_violation = False
+                final_conf   = 0.0
+                reasoning = (
+                    f"heuristic_fallback: insufficient signal to call it without "
+                    f"the LLM (near_bin={near_bin}, vanished={object_vanished}, "
+                    f"strong_possession={strong_possession})"
+                )
 
         reasons = [f"L5_llm_final: {reasoning}"]
 
