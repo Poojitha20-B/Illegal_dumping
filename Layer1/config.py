@@ -18,6 +18,7 @@ KEEP_CLASSES = {
     "bag", "sports ball",
     "chair", "couch", "tv", "laptop",
     "box", "clock", "vase", "book",
+    "car",
     # Future: "trash can", "waste container" (not in COCO)
 }
 

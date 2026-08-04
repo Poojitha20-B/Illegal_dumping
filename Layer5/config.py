@@ -25,10 +25,18 @@ MIN_MOVE_PX_FOR_COUPLING = 3.0
 # Trajectory intent — removed (heuristic-only, no longer used):
 # TRAJ_WINDOW, TRAJ_PERSON_WEIGHT, TRAJ_OBJECT_WEIGHT, TRAJ_LEGAL_THRESH
 
-# Bin logic — removed (heuristic-only, no longer used; bin distance is now
-# passed to the LLM as bin_context and it judges proximity itself):
-# BIN_LEGAL_RADIUS_PX, BIN_PERSON_RADIUS_PX, BIN_APPROACH_THRESH,
-# BIN_APPROACH_CORROBORATED, BIN_ENTRY_MIN_PEAK_COS
+# Bin logic — BIN_PERSON_RADIUS_PX, BIN_APPROACH_THRESH,
+# BIN_APPROACH_CORROBORATED, BIN_ENTRY_MIN_PEAK_COS remain removed
+# (heuristic-only, no longer used).
+#
+# BIN_LEGAL_RADIUS_PX is restored as a calibrated *reference value* only —
+# it is passed to the LLM as context (bin_context["calibrated_near_bin_threshold_px"])
+# so it has a scale-appropriate sense of what "near" means in this scene.
+# It is NOT used anywhere in code as a decision threshold; the LLM still
+# judges proximity/intent itself. Calibrated per-video by
+# Layer1.calibrator.apply() (falls back to this default if calibration
+# doesn't run, e.g. --no-calibrate mode).
+BIN_LEGAL_RADIUS_PX = 210
 
 # Confidence scoring — removed (heuristic-blend only, no longer used;
 # the LLM returns confidence directly):
@@ -70,6 +78,15 @@ LLM_MAX_RE_EXAMINE_ROUNDS = 1         # unused now (no intermediate calls) — k
 # LLM_FLAG_CONFIDENCE_MIN — removed, unused by the new single-call path.
 # LLM_CALL_DEBOUNCE_FRAMES — removed. There's exactly one LLM call per
 # case now (at window closure), so there's nothing to debounce.
+# Below this confidence, a should_flag=False verdict is relabeled
+# "uncertain" instead of "legal_disposal" — a low-confidence non-flag is
+# not the same thing as a confident legal determination, and reporting it
+# as a clean LEGAL result overstates certainty the model doesn't have.
+# Uncertain cases are excluded from batch_eval.py's precision/recall/F1
+# and reported separately as review cases instead. Does NOT affect
+# should_flag itself or the plate/FaceID/challan pipeline (still gated on
+# is_violation only) — this only changes how a non-flag is labeled/counted.
+LOW_CONFIDENCE_LEGAL_FLOOR = 0.4
 
 # Fix 2 — below this object-detection confidence, a bbox centroid isn't
 # trusted for trail updates / velocity computation. A jittery low-confidence

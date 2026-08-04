@@ -724,6 +724,35 @@ class DumpingAgent:
             "nearest_bin_distance_px": round(bin_d, 0) if bin_d < float("inf") else None,
             "nearest_bin_id":        nearest_bin_id,
             "person_approach_score": round(person_approach, 2),
+            # Calibrated threshold — gives the LLM a reference frame for what
+            # "near" means in this specific video. Computed by the calibrator
+            # per-video from scene geometry (falls back to cfg default if
+            # calibration didn't run). This is a reference value, not a
+            # decision rule — the LLM still judges what the evidence means.
+            "calibrated_near_bin_threshold_px": cfg.BIN_LEGAL_RADIUS_PX,
+            "near_threshold_meaning": (
+            f"Distances below {cfg.BIN_LEGAL_RADIUS_PX}px mean the person "
+            f"could reasonably reach or interact with the bin. Distances "
+            f"above 2x this threshold mean the bin was clearly out of reach. "
+            f"Between these values is a grey zone — use other evidence "
+            f"(approach direction, coupling pattern) to judge intent.\n"
+            f"Physical context: object trackers frequently lose a thrown "
+            f"or placed object the instant it enters, is occluded by, or "
+            f"passes behind a bin — a sudden disappearance while within "
+            f"the near-bin threshold is physically consistent with the "
+            f"object having entered the bin, even without a clean, "
+            f"sustained coupling drop beforehand (dropping something into "
+            f"a bin from close range is a small motion, not a big one).\n"
+            f"person_approach_score is computed from a short recent "
+            f"movement trail and can read low or noisy even when the "
+            f"person is standing right at the bin — e.g. they approached "
+            f"from an angle, paused, or the trail window is short. Once "
+            f"a person is already within the near-bin threshold, direct "
+            f"proximity is generally a stronger signal than approach "
+            f"score; a low approach score alone should not outweigh "
+            f"proximity plus a disappearance consistent with entering "
+            f"the bin."
+        ),
         }
 
         final_briefing = {
@@ -768,10 +797,17 @@ class DumpingAgent:
 
         reasons = [f"L5_llm_final: {reasoning}"]
 
+        # Low-confidence non-flag → uncertain, not a confident legal call.
+        # is_violation itself is untouched (still gates the plate/FaceID/
+        # challan pipeline in run_pipeline.py) — this only affects labeling
+        # for display and batch_eval.py's metrics.
+        needs_review = (not is_violation) and (final_conf < cfg.LOW_CONFIDENCE_LEGAL_FLOOR)
+
         result = {
             "violation":       is_violation,
             "confidence":      final_conf,
             "event":           "illegal_dumping" if is_violation else "legal_disposal",
+            "needs_review":    needs_review,
             "person_id":       case.person_id,
             "object_id":       case.trash_id,
             "pair_id":         case.pair_id,
@@ -812,7 +848,7 @@ class DumpingAgent:
         belief.phase = PipelineState.FINALIZED
         belief.confidence = final_conf
 
-        tag = "🚨 VIOLATION" if is_violation else "✅ LEGAL"
+        tag = "🚨 VIOLATION" if is_violation else ("❓ UNCERTAIN" if needs_review else "✅ LEGAL")
         print(
             f"[Layer5] {tag} | {result['event']} | conf={final_conf:.2f} | "
             f"P{case.person_id} T{case.trash_id} | "

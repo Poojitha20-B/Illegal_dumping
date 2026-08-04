@@ -241,7 +241,15 @@ You will receive:
 1. A complete kinematic timeline — per-frame data for every frame from when the \
    person-object pair was first detected until the monitoring window closed.
 2. Summary statistics computed from that timeline.
-3. Bin context — whether bins were present and their positions.
+3. Bin context — whether bins were present, their positions, and (when bins are \
+   present) a calibrated 'near bin' threshold in pixels, specific to this video's \
+   scene geometry. This threshold tells you what pixel distance counts as "within \
+   reach of a bin" here — use it to interpret the nearest-bin-distance number \
+   rather than guessing from the raw pixel value alone. It is a reference scale, \
+   not a decision rule: distances above ~2x the threshold are clearly out of \
+   reach, distances near or below it mean the person could reasonably interact \
+   with the bin, and values in between are a grey zone where you should weigh \
+   approach direction and coupling pattern more heavily.
 
 The timeline includes these values per frame:
   - coupling: cosine similarity between person and object velocity vectors.
@@ -319,6 +327,24 @@ Respond with ONLY a JSON object:
 
 def _format_final_briefing(briefing: Dict[str, Any]) -> str:
     bin_ctx = briefing.get("bin_context") or {}
+
+    bin_lines = [f"- Bins present: {bin_ctx.get('bins_present')}"]
+
+    if bin_ctx.get("bins_present") and bin_ctx.get("nearest_bin_distance_px") is not None:
+        bin_lines.append(
+            f"- Nearest bin distance: {bin_ctx.get('nearest_bin_distance_px')}px "
+            f"(bin id: {bin_ctx.get('nearest_bin_id')})"
+        )
+        bin_lines.append(
+            f"- Person approach score toward bin: {bin_ctx.get('person_approach_score')}"
+        )
+        threshold = bin_ctx.get("calibrated_near_bin_threshold_px")
+        meaning = bin_ctx.get("near_threshold_meaning", "")
+        if threshold is not None:
+            bin_lines.append(f"- Calibrated 'near bin' threshold: {threshold}px")
+            if meaning:
+                bin_lines.append(f"  Meaning: {meaning}")
+
     return (
         f"- Coupling frames observed: {briefing.get('coupling_frames_observed')} "
         f"(peak cosine similarity: {briefing.get('peak_coupling')}, "
@@ -328,10 +354,7 @@ def _format_final_briefing(briefing: Dict[str, Any]) -> str:
         f"- Person gone frames: {briefing.get('person_gone_frames')}\n"
         f"- Object final position: {briefing.get('object_final_position')}, "
         f"confidence: {briefing.get('object_final_confidence')}\n"
-        f"- Bins present: {bin_ctx.get('bins_present')}\n"
-        f"- Nearest bin distance: {bin_ctx.get('nearest_bin_distance_px')}px "
-        f"(bin id: {bin_ctx.get('nearest_bin_id')})\n"
-        f"- Person approach score toward bin: {bin_ctx.get('person_approach_score')}"
+        + "\n".join(bin_lines)
     )
 def _format_timeline(snapshots: List[KinematicSnapshot]) -> str:
     """Format the full kinematic timeline as a compact table."""
