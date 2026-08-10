@@ -371,4 +371,3 @@ Detection accuracy and enforcement reliability may vary depending on:
 - camera angle
 - object visibility
 - environmental occlusions
-
