@@ -87,6 +87,7 @@ LLM_MAX_RE_EXAMINE_ROUNDS = 1         # unused now (no intermediate calls) — k
 # should_flag itself or the plate/FaceID/challan pipeline (still gated on
 # is_violation only) — this only changes how a non-flag is labeled/counted.
 LOW_CONFIDENCE_LEGAL_FLOOR = 0.4
+HISTORICAL_LINK_WIDTH_RATIO = 1.5
 
 # Fix 2 — below this object-detection confidence, a bbox centroid isn't
 # trusted for trail updates / velocity computation. A jittery low-confidence

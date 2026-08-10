@@ -87,7 +87,8 @@ from Layer2.track_state import TrackedObject
 from Layer2.bin_tracker import TrackedBin
 from Layer4.dumping_inference import DumpingEvent  # kept only for the update() type hint
 import Layer5.config as cfg
-from Layer5.belief_state import BeliefStateManager, PipelineState, KinematicSnapshot
+_HISTORICAL_LINK_WIDTH_RATIO: float = getattr(cfg, "HISTORICAL_LINK_WIDTH_RATIO", 1.5)
+from Layer5.belief_state import BeliefState, BeliefStateManager, PipelineState, KinematicSnapshot
 from Layer5 import llm_controller
 
 
@@ -218,13 +219,15 @@ class _PersonHistory:
     frames:   int   = 0
     movement: float = 0.0
     last_pos: Optional[Tuple[float, float]] = None
+    last_bbox_width: float = 0.0
     trail:    deque = field(default_factory=lambda: deque(maxlen=cfg.TRAJ_WINDOW))
 
-    def update(self, pos: Tuple[float, float]) -> None:
+    def update(self, pos: Tuple[float, float], bbox_width: float = 0.0) -> None:
         self.frames += 1
         if self.last_pos:
             self.movement += _dist(pos, self.last_pos)
         self.last_pos = pos
+        self.last_bbox_width = bbox_width
         self.trail.append(pos)
 
     @property
@@ -318,7 +321,29 @@ class DumpingAgent:
     Call update() once per frame.
     """
 
-    def __init__(self):
+    def __init__(self, llm_mode: str = "live"):
+        """
+        llm_mode:
+          "live"    — default, unchanged behavior. _finalise_with_llm()
+                      builds the briefing AND calls the LLM in the same
+                      pass, exactly as before.
+          "capture" — used by tools/cache_features.py. Runs Layers 1-4 +
+                      all of Layer5's deterministic bookkeeping (coupling,
+                      kinematic_history, bin_context) but stops BEFORE the
+                      LLM call: the built (belief, final_briefing) pair is
+                      stashed in self.captured_cases instead, so a whole
+                      video can be processed for ZERO Groq tokens. Cases
+                      still "close" (case.closed=True) so the frame loop
+                      and get_all_results() behave normally; case.result
+                      is a placeholder — the real verdict is produced later,
+                      offline, by tools/eval_agent.py calling
+                      Layer5.agent.finalize_belief() directly on the cache.
+        """
+        if llm_mode not in ("live", "capture"):
+            raise ValueError(f"llm_mode must be 'live' or 'capture', got {llm_mode!r}")
+        self.llm_mode = llm_mode
+        self.captured_cases: Dict[str, dict] = {}
+
         self._cases:   Dict[str, _Case]          = {}
         self._persons: Dict[int, _PersonHistory] = {}
         self._used_trash_ids: set = set()
@@ -500,25 +525,82 @@ class DumpingAgent:
                 if c.closed and c.result is not None
                 and not c.result.get("skipped", False)
                 and c.result.get("confidence", 0.0) >= min_confidence]
+    
     def finalize_all(self, frame_idx: int, tracked_bins: List[TrackedBin]) -> List[dict]:
         """
-        Force-close every still-open case — called once when the video ends.
-        Needed because the in-loop closure condition only fires on
-        person_gone_frames (or person_gone+obj_missing-stale); a person who
-        never leaves frame before the clip ends would otherwise leave every
-        case open forever and produce zero verdicts.
+        Force-close all open cases. Called when the video ends.
+
+        Deduplicates cases that share the same person_id — only the case
+        with the strongest coupling evidence gets an LLM call. Others are
+        closed silently as duplicates. This prevents the same physical
+        dumping event (one person, one object tracked under multiple IDs)
+        from producing multiple verdicts.
         """
         verdicts = []
+
+        # ── Group open cases by person_id ──────────────────────────
+        person_cases: Dict[int, List[_Case]] = {}
         for pair_id, case in list(self._cases.items()):
-            if case.closed:
-                continue
-            ph = self._persons.get(case.person_id)
-            case.log(f"video_ended_forcing_closure frame={frame_idx}")
-            verdict = self._finalise_with_llm(case, tracked_bins, frame_idx, ph)
+            if not case.closed:
+                pid = case.person_id
+                if pid not in person_cases:
+                    person_cases[pid] = []
+                person_cases[pid].append(case)
+
+        # ── For each person, keep only the strongest case ──────────
+        for pid, cases in person_cases.items():
+            if len(cases) == 1:
+                best_case = cases[0]
+            else:
+                # Multiple cases for same person — pick the one with most
+                # coupling evidence (ByteTrack ID-switching on same object).
+                best_case = max(cases, key=lambda c: (
+                    len(c.coupling_scores),
+                    c.peak_coupling,
+                ))
+
+                # Close weaker cases silently
+                for c in cases:
+                    if c is not best_case:
+                        c.log(
+                            f"L5_merged_with_stronger_case: "
+                            f"keeping P{best_case.person_id} T{best_case.trash_id} "
+                            f"(coupling={len(best_case.coupling_scores)}f "
+                            f"peak={best_case.peak_coupling:.2f}) over "
+                            f"T{c.trash_id} (coupling={len(c.coupling_scores)}f "
+                            f"peak={c.peak_coupling:.2f})"
+                        )
+                        c.closed = True
+                        c.result = {
+                            "violation": False,
+                            "confidence": 0.0,
+                            "event": "legal_disposal",
+                            "skipped": True,
+                            "needs_review": False,
+                            "person_id": c.person_id,
+                            "object_id": c.trash_id,
+                            "pair_id": c.pair_id,
+                            "reason": "L5_duplicate_case_merged",
+                            "frames": [c.start_frame, frame_idx],
+                            "reasoning_log": list(c.reasoning),
+                            "coupling_frames": len(c.coupling_scores),
+                            "peak_coupling": round(c.peak_coupling, 2),
+                            "release_clarity": 0.0,
+                            "rest_frames": c.obj_missing_frames,
+                            "intent_score": 0.0,
+                            "obj_approach": 0.0,
+                            "person_approach": 0.0,
+                            "kinematic_frames_analyzed": 0,
+                        }
+
+            # ── Finalize the best case ─────────────────────────────
+            ph = self._persons.get(best_case.person_id)
+            best_case.log(f"video_ended_forcing_closure frame={frame_idx}")
+            verdict = self._finalise_with_llm(best_case, tracked_bins, frame_idx, ph)
             if verdict:
                 verdicts.append(verdict)
-        return verdicts
 
+        return verdicts
     def get_active_beliefs(self) -> List[dict]:
         """
         Snapshot of all non-locked BeliefStates, for debug overlay / testing.
@@ -674,6 +756,62 @@ class DumpingAgent:
             case.closed = True
             return result
 
+        belief, final_briefing = self._build_final_briefing(case, tracked_bins, frame_idx, ph)
+
+        if self.llm_mode == "capture":
+            self.captured_cases[case.pair_id] = {
+                "pair_id":       case.pair_id,
+                "person_id":     case.person_id,
+                "trash_id":      case.trash_id,
+                "start_frame":   case.start_frame,
+                "end_frame":     frame_idx,
+                "final_briefing": final_briefing,
+                "kinematic_history": [
+                    {
+                        "frame_idx": s.frame_idx, "obj_pos": s.obj_pos, "person_pos": s.person_pos,
+                        "obj_speed": s.obj_speed, "person_speed": s.person_speed,
+                        "distance": s.distance, "obj_confidence": s.obj_confidence,
+                        "coupling_score": s.coupling_score,
+                    }
+                    for s in belief.kinematic_history
+                ],
+                "reasoning_log": list(case.reasoning),
+            }
+            case.result = {
+                "violation": False, "confidence": 0.0, "event": "cached_pending",
+                "skipped": True, "pair_id": case.pair_id,
+                "reason": "L5_captured_for_offline_eval: no LLM call made in capture mode",
+            }
+            case.closed = True
+            return None
+
+        result = finalize_belief(
+            pair_id=case.pair_id, person_id=case.person_id, trash_id=case.trash_id,
+            start_frame=case.start_frame, frame_idx=frame_idx,
+            belief=belief, final_briefing=final_briefing,
+            used_trash_ids=self._used_trash_ids, case_log=case.reasoning,
+        )
+        case.result = result
+        case.closed = True
+        return result
+
+    def _build_final_briefing(
+        self,
+        case:         _Case,
+        tracked_bins: List[TrackedBin],
+        frame_idx:    int,
+        ph:           Optional["_PersonHistory"],
+    ) -> Tuple[BeliefState, dict]:
+        """
+        Pure computation half of the old _finalise_with_llm(): everything
+        needed to ask the LLM a question, built from raw kinematics only —
+        no LLM call, no side effects besides the belief's own bookkeeping.
+        Split out so tools/cache_features.py can run this (and stop here)
+        for every case in a video without spending any Groq tokens, and so
+        tools/eval_agent.py can later replay finalize_belief() against the
+        cached (belief, final_briefing) pair exactly as it would have run
+        live.
+        """
         bins_present = len(tracked_bins) > 0 or case.bins_were_present
         belief = self._beliefs.get_or_create(case.pair_id)
         case.log(
@@ -766,138 +904,14 @@ class DumpingAgent:
             "object_final_position":  case.final_obj_pos,
             "object_final_confidence": case.final_obj_confidence,
             "bin_context":            bin_context,
+            "person_approach":        round(person_approach, 2),
             # No heuristic_verdict / heuristic_confidence — there is no
             # heuristic verdict anymore. The old prompt's "reference, not a
             # constraint" framing doesn't apply; llm_controller.py's final
             # prompt builder needs updating to not expect those keys (flagging
             # for the llm_controller.py chunk).
         }
-
-
-        try:
-            final_decision = llm_controller.call_agent_final(
-                belief, final_briefing,
-                kinematic_timeline=list(belief.kinematic_history),
-                frame_idx=frame_idx,
-            )
-            is_violation = final_decision.should_flag
-            final_conf   = round(final_decision.confidence, 3)
-            reasoning    = final_decision.new_reasoning
-            case.log(
-                f"L5_llm_final_verdict flag={is_violation} conf={final_conf:.2f}"
-            )
-        except llm_controller.LLMResponseError as e:
-            # LLM unavailable (rate limit / outage) — fall back to the same
-            # raw kinematic signals we already built for the prompt (bin_context,
-            # sustained_drop, peak/avg coupling) instead of silently defaulting
-            # to legal_disposal conf=0.00. Silently failing open here means a
-            # real dumping case with strong coupling and a long-vanished object
-            # never reaches plate/FaceID at all — worse than a lower-confidence
-            # flag a human can review. Kept deliberately conservative: capped
-            # confidence, and explicitly tagged as heuristic so it's never
-            # confused with an LLM-confirmed verdict downstream.
-            case.log(f"L5_llm_final_failed: {e} — using heuristic fallback")
-
-            near_bin = (
-                bin_context["bins_present"]
-                and bin_context["nearest_bin_distance_px"] is not None
-                and bin_context["nearest_bin_distance_px"] <= cfg.BIN_LEGAL_RADIUS_PX
-            )
-            object_vanished = case.obj_missing_frames >= cfg.OBJECT_MISSING_CLOSE_FRAMES
-            strong_possession = peak_coupling >= 0.85 and len(coupling_vals) >= 5
-
-            if near_bin and object_vanished:
-                # Disappeared right at a bin — consistent with legal disposal.
-                is_violation = False
-                final_conf   = 0.30
-                reasoning = (
-                    "heuristic_fallback: object vanished near a bin "
-                    f"(dist={bin_context['nearest_bin_distance_px']}px) — "
-                    "treated as likely legal disposal, LLM unavailable to confirm"
-                )
-            elif strong_possession and object_vanished and not bin_context["bins_present"]:
-                # Carried with strong coupling, then vanished, no bin anywhere
-                # in the scene — the pattern L4/L5 exist to catch.
-                is_violation = True
-                final_conf   = 0.50
-                reasoning = (
-                    f"heuristic_fallback: peak_coupling={peak_coupling:.2f} "
-                    f"obj_missing={case.obj_missing_frames}f, no bin present in scene — "
-                    "flagged for human/plate review, LLM unavailable to confirm"
-                )
-            else:
-                # Ambiguous without the LLM's judgment — don't guess either way.
-                is_violation = False
-                final_conf   = 0.0
-                reasoning = (
-                    f"heuristic_fallback: insufficient signal to call it without "
-                    f"the LLM (near_bin={near_bin}, vanished={object_vanished}, "
-                    f"strong_possession={strong_possession})"
-                )
-
-        reasons = [f"L5_llm_final: {reasoning}"]
-
-        # Low-confidence non-flag → uncertain, not a confident legal call.
-        # is_violation itself is untouched (still gates the plate/FaceID/
-        # challan pipeline in run_pipeline.py) — this only affects labeling
-        # for display and batch_eval.py's metrics.
-        needs_review = (not is_violation) and (final_conf < cfg.LOW_CONFIDENCE_LEGAL_FLOOR)
-
-        result = {
-            "violation":       is_violation,
-            "confidence":      final_conf,
-            "event":           "illegal_dumping" if is_violation else "legal_disposal",
-            "needs_review":    needs_review,
-            "person_id":       case.person_id,
-            "object_id":       case.trash_id,
-            "pair_id":         case.pair_id,
-            "reason":          " | ".join(reasons),
-            "kinematic_frames_analyzed": len(belief.kinematic_history),
-            "person_approach": round(person_approach, 2),
-            "frames":          [case.start_frame, frame_idx],
-            "reasoning_log":   list(case.reasoning),
-            # ── Backward-compatible aliases for visualizer.py (Gap 4) ────────
-            "coupling_frames": len(coupling_vals),
-            "peak_coupling":   round(peak_coupling, 2),
-            "release_clarity": round(1.0 - avg_coupling, 2) if sustained_drop else 0.0,
-            "rest_frames":     case.obj_missing_frames,
-            "intent_score":    0.0,
-            "obj_approach":    0.0,
-        }
-
-        # ── Guard: trash object already claimed by a prior confirmed violation.
-        # Carried over from the old heuristic _finalise() at your instruction —
-        # now runs AFTER the LLM verdict rather than blending into a heuristic
-        # confidence score, since there's no heuristic score to blend into.
-        if is_violation and case.trash_id in self._used_trash_ids:
-            is_violation = False
-            result["violation"] = False
-            result["event"] = "legal_disposal"
-            reasons.append(f"L5_trash_already_claimed T{case.trash_id}")
-            result["reason"] = " | ".join(reasons)
-            case.log("trash_claimed_by_prior_violation")
-            final_conf = max(0.0, final_conf - 0.20)
-            result["confidence"] = round(final_conf, 3)
-
-        if is_violation:
-            self._used_trash_ids.add(case.trash_id)
-
-        case.result = result
-        case.closed = True
-
-        belief.phase = PipelineState.FINALIZED
-        belief.confidence = final_conf
-
-        tag = "🚨 VIOLATION" if is_violation else ("❓ UNCERTAIN" if needs_review else "✅ LEGAL")
-        print(
-            f"[Layer5] {tag} | {result['event']} | conf={final_conf:.2f} | "
-            f"P{case.person_id} T{case.trash_id} | "
-            f"coupling_peak={peak_coupling:.2f} avg={avg_coupling:.2f} | "
-            f"obj_missing={case.obj_missing_frames}f person_gone={case.person_gone_frames}f | "
-            f"frames={result['frames']}"
-        )
-        print(f"         reason: {result['reason']}")
-        return result
+        return belief, final_briefing
 
     # ── Ghost filter ──────────────────────────────────────────────────────────
 
@@ -918,33 +932,41 @@ class DumpingAgent:
                 continue
             if obj.track_id not in self._persons:
                 self._persons[obj.track_id] = _PersonHistory()
-            self._persons[obj.track_id].update(_centroid(obj.bbox))
+            width = float(obj.bbox[2] - obj.bbox[0])
+            self._persons[obj.track_id].update(_centroid(obj.bbox), width)
 
     def _nearest_historical_person(
-        self,
-        point: Tuple[float, float],
-        radius_px: float = 160.0,
-        max_frames_back: int = 25,
+    self,
+    point: Tuple[float, float],
+    radius_px: float = 160.0,
+    max_frames_back: int = 25,
     ) -> Optional[int]:
-        """
-        Search person trail histories for whoever was closest to `point`
-        up to max_frames_back frames ago. Returns person track_id or None.
-        """
         best_pid  = None
         best_dist = float("inf")
+        best_age  = -1
+
         for pid, ph in self._persons.items():
             trail = list(ph.trail)
-            # Only look at last max_frames_back entries
+            if not trail:
+                continue
             recent = trail[-max_frames_back:] if len(trail) > max_frames_back else trail
-            for pos in recent:
+
+            person_max_dist = (
+                min(radius_px, ph.last_bbox_width * _HISTORICAL_LINK_WIDTH_RATIO)
+                if ph.last_bbox_width > 0 else radius_px
+            )
+
+            for age_idx, pos in enumerate(recent):
                 d = _dist(pos, point)
-                if d < best_dist:
+                if d > person_max_dist:
+                    continue
+                if d < best_dist or (d == best_dist and age_idx > best_age):
                     best_dist = d
                     best_pid  = pid
-        if best_dist <= radius_px:
-            return best_pid
-        return None
-    
+                    best_age  = age_idx
+
+        return best_pid
+        
     def _nearest_person_ballistic(
         self,
         point: Tuple[float, float],
@@ -955,6 +977,13 @@ class DumpingAgent:
         Ballistic trajectory check — projects each person's historical
         velocity forward and checks if the projected path passes near `point`.
         Handles far throws where proximity alone fails.
+
+        Depth-scaled (same formula as _nearest_historical_person): each
+        candidate's own max linking distance is capped at
+        min(radius_px, last_bbox_width * _HISTORICAL_LINK_WIDTH_RATIO), so a
+        distant background person that the historical proximity check
+        correctly rejects can't be picked back up here just because their
+        projected path falls inside a flat 400px radius.
         """
         best_pid  = None
         best_dist = float("inf")
@@ -963,6 +992,11 @@ class DumpingAgent:
             trail = list(ph.trail)
             if len(trail) < 3:
                 continue
+
+            person_max_dist = (
+                min(radius_px, ph.last_bbox_width * _HISTORICAL_LINK_WIDTH_RATIO)
+                if ph.last_bbox_width > 0 else radius_px
+            )
 
             recent = trail[-max_frames_back:] if len(trail) > max_frames_back else trail
 
@@ -980,13 +1014,13 @@ class DumpingAgent:
                     proj_x = px + vx * step
                     proj_y = py + vy * step
                     d = _dist((proj_x, proj_y), point)
-                    if d < best_dist:
+                    # Only consider this projection if within THIS
+                    # person's depth-scaled threshold
+                    if d < best_dist and d <= person_max_dist:
                         best_dist = d
                         best_pid  = pid
 
-        if best_dist <= radius_px:
-            return best_pid
-        return None
+        return best_pid
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1021,3 +1055,135 @@ class DumpingAgent:
         for k in stale:
             del self._cases[k]
             self._beliefs.purge(k)
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Standalone finalizer — the LLM-call + heuristic-fallback + result-assembly
+#  half of the old _finalise_with_llm(), extracted to module level so it can
+#  run against a (belief, final_briefing) pair built EITHER live (this frame,
+#  by DumpingAgent._build_final_briefing) OR replayed from a JSON cache file
+#  written by tools/cache_features.py (see tools/eval_agent.py). Behavior is
+#  byte-for-byte identical to the pre-split code for the live path.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def finalize_belief(
+    *,
+    pair_id:        str,
+    person_id:      int,
+    trash_id:       int,
+    start_frame:    int,
+    frame_idx:      int,
+    belief:         BeliefState,
+    final_briefing: dict,
+    used_trash_ids: set,
+    case_log:       list,
+) -> dict:
+    bin_context   = final_briefing["bin_context"]
+    peak_coupling = final_briefing["peak_coupling"]
+    avg_coupling  = final_briefing["avg_coupling"]
+    sustained_drop = final_briefing["sustained_coupling_drop"]
+    coupling_frames = final_briefing["coupling_frames_observed"]
+    obj_missing_frames = final_briefing["object_missing_frames"]
+    person_approach = final_briefing.get("person_approach", 0.0)
+
+    used_heuristic_fallback = False
+    try:
+        final_decision = llm_controller.call_agent_final(
+            belief, final_briefing,
+            kinematic_timeline=list(belief.kinematic_history),
+            frame_idx=frame_idx,
+        )
+        is_violation = final_decision.should_flag
+        final_conf   = round(final_decision.confidence, 3)
+        reasoning    = final_decision.new_reasoning
+        case_log.append(f"L5_llm_final_verdict flag={is_violation} conf={final_conf:.2f}")
+    except llm_controller.LLMResponseError as e:
+        # LLM unavailable (rate limit / outage) — fall back to the same raw
+        # kinematic signals already built for the prompt, deliberately
+        # conservative and explicitly tagged as heuristic. See agent.py's
+        # original _finalise_with_llm docstring for the full rationale.
+        used_heuristic_fallback = True
+        case_log.append(f"L5_llm_final_failed: {e} — using heuristic fallback")
+
+        near_bin = (
+            bin_context["bins_present"]
+            and bin_context["nearest_bin_distance_px"] is not None
+            and bin_context["nearest_bin_distance_px"] <= cfg.BIN_LEGAL_RADIUS_PX
+        )
+        object_vanished = obj_missing_frames >= cfg.OBJECT_MISSING_CLOSE_FRAMES
+        strong_possession = peak_coupling >= 0.85 and coupling_frames >= 5
+
+        if near_bin and object_vanished:
+            is_violation = False
+            final_conf   = 0.30
+            reasoning = (
+                "heuristic_fallback: object vanished near a bin "
+                f"(dist={bin_context['nearest_bin_distance_px']}px) — "
+                "treated as likely legal disposal, LLM unavailable to confirm"
+            )
+        elif strong_possession and object_vanished and not bin_context["bins_present"]:
+            is_violation = True
+            final_conf   = 0.50
+            reasoning = (
+                f"heuristic_fallback: peak_coupling={peak_coupling:.2f} "
+                f"obj_missing={obj_missing_frames}f, no bin present in scene — "
+                "flagged for human/plate review, LLM unavailable to confirm"
+            )
+        else:
+            is_violation = False
+            final_conf   = 0.0
+            reasoning = (
+                f"heuristic_fallback: insufficient signal to call it without "
+                f"the LLM (near_bin={near_bin}, vanished={object_vanished}, "
+                f"strong_possession={strong_possession})"
+            )
+
+    reasons = [f"L5_llm_final: {reasoning}"]
+    needs_review = (not is_violation) and (final_conf < cfg.LOW_CONFIDENCE_LEGAL_FLOOR)
+
+    result = {
+        "violation":       is_violation,
+        "confidence":      final_conf,
+        "event":           "illegal_dumping" if is_violation else "legal_disposal",
+        "needs_review":    needs_review,
+        "skipped":         used_heuristic_fallback,
+        "person_id":       person_id,
+        "object_id":       trash_id,
+        "pair_id":         pair_id,
+        "reason":          " | ".join(reasons),
+        "kinematic_frames_analyzed": len(belief.kinematic_history),
+        "person_approach": round(person_approach, 2),
+        "frames":          [start_frame, frame_idx],
+        "reasoning_log":   list(case_log),
+        "coupling_frames": coupling_frames,
+        "peak_coupling":   round(peak_coupling, 2),
+        "release_clarity": round(1.0 - avg_coupling, 2) if sustained_drop else 0.0,
+        "rest_frames":     obj_missing_frames,
+        "intent_score":    0.0,
+        "obj_approach":    0.0,
+    }
+
+    if is_violation and trash_id in used_trash_ids:
+        is_violation = False
+        result["violation"] = False
+        result["event"] = "legal_disposal"
+        reasons.append(f"L5_trash_already_claimed T{trash_id}")
+        result["reason"] = " | ".join(reasons)
+        case_log.append("trash_claimed_by_prior_violation")
+        final_conf = max(0.0, final_conf - 0.20)
+        result["confidence"] = round(final_conf, 3)
+
+    if is_violation:
+        used_trash_ids.add(trash_id)
+
+    belief.phase = PipelineState.FINALIZED
+    belief.confidence = final_conf
+
+    tag = "🚨 VIOLATION" if is_violation else ("❓ UNCERTAIN" if needs_review else "✅ LEGAL")
+    print(
+        f"[Layer5] {tag} | {result['event']} | conf={final_conf:.2f} | "
+        f"P{person_id} T{trash_id} | "
+        f"coupling_peak={peak_coupling:.2f} avg={avg_coupling:.2f} | "
+        f"obj_missing={obj_missing_frames}f | frames={result['frames']}"
+    )
+    print(f"         reason: {result['reason']}")
+    return result

@@ -57,6 +57,11 @@ _POSSESSION_HISTORY_FRAMES:  int   = getattr(cfg, "POSSESSION_HISTORY_FRAMES",  
 _HELD_FRAMES_MIN:            int   = getattr(cfg, "HELD_FRAMES_MIN",            5)
 # Around line 50, with the other constants:
 _HISTORICAL_DROP_RADIUS_PX: float = getattr(cfg, "HISTORICAL_DROP_RADIUS_PX", 160.0)
+# [FIX-7b] A candidate person's effective linking radius is capped at
+# (their bbox width * this ratio), so a small/distant figure requires a
+# proportionally smaller linking distance than a large/close-up subject.
+# 1.5 = "object must be within ~1.5 body-widths to count as reachable."
+_HISTORICAL_LINK_WIDTH_RATIO: float = getattr(cfg, "HISTORICAL_LINK_WIDTH_RATIO", 1.5)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Tunable constants
@@ -135,6 +140,11 @@ class _PersonHistoryStore:
     def __init__(self, maxlen: int = _POSSESSION_HISTORY_FRAMES):
         self._maxlen: int = maxlen
         self._history: Dict[int, Deque[Tuple[float, float]]] = {}
+        # [FIX-7b] Most recent bbox width per person, used as a depth/
+        # distance-from-camera proxy so the historical-link radius can be
+        # scaled down for small, distant figures instead of using one flat
+        # pixel threshold for everyone.
+        self._widths:  Dict[int, float] = {}
 
     def update(self, persons: List[TrackedObject]) -> None:
         """Call once per frame with the current person track list."""
@@ -147,32 +157,54 @@ class _PersonHistoryStore:
             if tid not in self._history:
                 self._history[tid] = deque(maxlen=self._maxlen)
             self._history[tid].append((cx, cy))
+            self._widths[tid] = float(p.bbox[2] - p.bbox[0])
 
         # Drop history for persons that have left the scene
         gone = [tid for tid in self._history if tid not in seen_ids]
         for tid in gone:
             del self._history[tid]
+            self._widths.pop(tid, None)
 
     def nearest_historical_person(
         self,
-        point:      Tuple[float, float],
-        max_dist:   float,
+        point:         Tuple[float, float],
+        max_dist:      float,
+        person_widths: Optional[Dict[int, float]] = None,
     ) -> Tuple[Optional[int], float]:
         """
         Search ALL stored person histories for the closest centroid to `point`.
 
+        [FIX-7b] The linking radius is now depth-scaled per candidate person:
+        `max_dist` is treated as a ceiling, not a flat threshold. Each
+        person's effective radius is `min(max_dist, person_width * _HISTORICAL_LINK_WIDTH_RATIO)`,
+        using their most recent bbox width as a proxy for distance from
+        camera. A small, distant figure (e.g. a 34px-wide bbox) can no
+        longer be linked to an object 88px away just because 88px sits
+        under a flat threshold tuned for close-up subjects — the object
+        must be within roughly 1.5 body-widths of THAT specific person.
+        Close-up subjects with wide bboxes are unaffected, since their
+        scaled radius simply hits the `max_dist` ceiling.
+
         Returns (track_id, distance) of the best match, or (None, inf) if
-        nothing falls within max_dist.
+        nothing falls within that person's effective radius.
+
+        `person_widths` defaults to this store's own tracked widths
+        (updated every frame in .update()); pass an explicit dict only if
+        the caller needs to override.
 
         Edge cases handled cleanly:
           - Empty history dict  → returns (None, inf)
           - Person with 0 entries → skipped
+          - No known width for a person → falls back to `max_dist` (no
+            scaling) rather than silently excluding them
           - Multiple persons equally close → lowest distance wins;
             ties broken by the person whose MOST RECENT entry is closest
-            (i.e., the one who passed over `point` most recently).
+            (i.e., the one who passed over `point` most recently)
         """
         if not self._history:
             return None, float("inf")
+
+        widths = person_widths if person_widths is not None else self._widths
 
         best_tid:  Optional[int] = None
         best_dist: float         = float("inf")
@@ -183,15 +215,25 @@ class _PersonHistoryStore:
         for tid, centroids in self._history.items():
             if not centroids:
                 continue
+
+            width = widths.get(tid)
+            person_max_dist = (
+                min(max_dist, width * _HISTORICAL_LINK_WIDTH_RATIO)
+                if width is not None
+                else max_dist
+            )
+
             for age_idx, (cx, cy) in enumerate(centroids):
                 d = math.hypot(px - cx, py - cy)
+                if d > person_max_dist:
+                    continue  # outside THIS person's depth-scaled radius
                 # Recency weight: more recent entries (higher index) win ties
                 if d < best_dist or (d == best_dist and age_idx > best_age):
                     best_dist = d
                     best_tid  = tid
                     best_age  = age_idx
 
-        if best_dist > max_dist:
+        if best_tid is None:
             return None, float("inf")
 
         return best_tid, best_dist
