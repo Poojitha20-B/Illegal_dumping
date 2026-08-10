@@ -1,4 +1,4 @@
-# VidTrace — A Causal, Agentic AI Framework for Offline Illegal Dumping Detection in Video
+# A Causal, Agentic AI Framework for Offline Illegal Dumping Detection in Video
 
 VidTrace is a modular surveillance framework that detects illegal dumping in public spaces using computer vision, temporal reasoning, and an LLM-driven agentic reasoning layer, and closes the loop with automated enforcement.
 
