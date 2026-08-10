@@ -372,4 +372,3 @@ Detection accuracy and enforcement reliability may vary depending on:
 - object visibility
 - environmental occlusions
 
-Roughly 61% of positive videos in the MIVIA IWDD 2026 dataset currently produce zero trackable events in testing — this is a known upstream Layer 1/2 tracking-coverage gap rather than a Layer 4/5 classification issue, and is an active area of work.
