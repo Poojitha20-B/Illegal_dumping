@@ -178,6 +178,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+
 ---
 
 ## Environment Variables
@@ -202,14 +203,15 @@ weights/
 └── trash_bin_detector.pt    # Layer 1 — bin detector (included in this repo)
 ```
 
-Additional models downloaded/cached on first use:
+Additional models downloaded/cached on first use, with download links:
 
 | Model | Used by | Notes |
 |---|---|---|
-| `rtdetr-l.pt` | Layer 1 | Not bundled — download via `ultralytics`/manually, place in `weights/` |
-| `EDSR_x4.pb` | Enhancer (plate super-resolution) | `curl -L -o EDSR_x4.pb https://github.com/Saafke/EDSR_Tensorflow/raw/master/models/EDSR_x4.pb` — place in project root |
-| `cct-s-v2-global-model` | Enhancer (OCR ensemble) | Auto-downloaded (~5 MB) via `fast_plate_ocr` on first run |
-| `buffalo_l` | FaceID module | Auto-downloaded by `insightface` on first run |
+| [`trash_bin_detector.pt`](https://github.com/Poojitha20-B/Illegal_dumping/blob/main/weights/trash_bin_detector.pt) | Layer 1 | Bundled in this repo at `weights/trash_bin_detector.pt` — no separate download needed |
+| [`rtdetr-l.pt`](https://github.com/ultralytics/assets/releases/download/v8.4.0/rtdetr-l.pt) | Layer 1 | Not bundled. Either download directly and place in `weights/`, or let `ultralytics` auto-download it on first run (`from ultralytics import RTDETR; RTDETR("rtdetr-l.pt")`) |
+| [`EDSR_x4.pb`](https://github.com/Saafke/EDSR_Tensorflow/raw/master/models/EDSR_x4.pb) | Enhancer (plate super-resolution) | `curl -L -o EDSR_x4.pb https://github.com/Saafke/EDSR_Tensorflow/raw/master/models/EDSR_x4.pb` — place in project root |
+| [`cct-s-v2-global-model`](https://github.com/ankandrew/fast-plate-ocr) | Enhancer (OCR ensemble) | Auto-downloaded (~5 MB) via `fast_plate_ocr` on first run |
+| [`buffalo_l`](https://github.com/deepinsight/insightface/tree/master/model_zoo) | FaceID module | Auto-downloaded by `insightface` on first run |
 
 ---
 
@@ -301,7 +303,13 @@ Illegal_dumping/
 └── tools/
 ```
 
-`labels/` (timestamp-matched ground truth) is included in this repo; the corresponding `videos/` are not — download them separately and place them alongside `labels/`.
+`labels/` (timestamp-matched ground truth) is included in this repo; the corresponding `videos/` are not — download them separately from Google Drive and place them alongside `labels/`:
+
+- [Dataset / videos — folder 1](https://drive.google.com/drive/u/1/folders/1O8KncUX0MN-p7CAxTfrhnb9bjVrDZZjl)
+- [Dataset / videos — folder 2](https://drive.google.com/drive/u/1/folders/1ugWhKRfhEUI3tki7zJMtqgRtQlVIl49e)
+- [Annotations / labels](https://drive.google.com/drive/u/1/folders/102g9UgWcJNCaRRoStdw9vznRb3YNRM64)
+
+Access to these folders is restricted — request access if you land on a permissions page. Once downloaded, unzip so the folder names/contents match the `videos/` and `labels/` layout above.
 
 ---
 
